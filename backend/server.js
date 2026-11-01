@@ -1,0 +1,156 @@
+require("dotenv").config();
+
+const express = require("express");
+const session = require("express-session");
+const pgSession = require("connect-pg-simple")(session);
+const cors = require("cors");
+const path = require("path");
+const pool = require("./src/db"); // your Pool using DATABASE_URL
+
+const app = express();
+
+/* =====================================================
+   1️⃣ CORS CONFIGURATION
+===================================================== */
+const allowedOrigins =process.env.FRONTEND_URL || ["http://localhost:3000"];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // allow requests with no origin (like Postman or server-to-server)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error(`CORS error: ${origin} not allowed`));
+    }
+  },
+  credentials: true,
+}));
+
+/* =====================================================
+   2️⃣ BODY PARSER
+===================================================== */
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+/* =====================================================
+   3️⃣ SESSION STORE (PostgreSQL)
+===================================================== */
+app.set("trust proxy", 1); // required if behind proxy (Render/Vercel)
+
+app.use(session({
+  store: new pgSession({
+    pool: pool, // use your PostgreSQL pool
+    tableName: 'session', // table name for sessions
+    createTableIfMissing: true, // auto-create table if missing
+  }),
+  secret: process.env.SESSION_SECRET || "keyboard cat",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === "production", // true on HTTPS
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // for cross-domain
+    maxAge: 24 * 60 * 60 * 1000, // 1 day
+  },
+}));
+
+/* =====================================================
+   4️⃣ STATIC FILES
+===================================================== */
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+/* =====================================================
+   5️⃣ REQUEST LOGGER
+===================================================== */
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl}`);
+  next();
+});
+
+/* =====================================================
+   6️⃣ HEALTH CHECK
+===================================================== */
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/* =====================================================
+   7️⃣ ROUTES
+===================================================== */
+app.use("/api/auth", require("./src/routes/authRoutes"));
+app.use("/api/users", require("./src/routes/userRoutes"));
+app.use("/api/departments", require("./src/routes/depRoutes"));
+app.use("/api/courses", require("./src/routes/courseRoutes"));
+app.use("/api/schedules", require("./src/routes/sheduleRoutes")); // Fixed typo
+app.use("/api/feedback", require("./src/routes/feedbackRoutes"));
+app.use("/api/announcements", require("./src/routes/announceRoutes"));
+app.use("/api/blocks", require("./src/routes/blockRoute"));
+app.use("/api/floors", require("./src/routes/floorRoute"));
+app.use("/api/rooms", require("./src/routes/roomRoutes"));
+app.use("/api/batches", require("./src/routes/batchRoutes"));
+app.use("/api/semesters", require("./src/routes/routeSemester"));
+app.use("/api/faculties", require("./src/routes/facultyRoutes"));
+app.use("/api/students", require("./src/routes/studentRoutes"));
+app.use("/api/importstudents", require("./src/routes/studentImportRoutes"));
+app.use("/api/chat", require("./src/routes/chatRoutes"));
+app.use("/api/course-batches", require("./src/routes/courseBatchRoutes"));
+app.use("/api/time-slots", require("./src/routes/timeSlotRoutes"));
+app.use("/api/section-rooms", require("./src/routes/sectionRoomRoutes"));
+app.use("/api/course-sections", require("./src/routes/courseSection"));
+app.use("/api/security-settings", require("./src/routes/securitySettingRoutes"));
+app.use("/api/academic-years", require("./src/routes/academicYearRoutes"));
+app.use("/api/evaluations", require("./src/routes/evaluationRoutes"));
+
+/* =====================================================
+   8️⃣ ROOT ROUTE
+===================================================== */
+app.get("/", (req, res) => {
+  res.json({
+    message: "Debre Berhan University API",
+    version: "1.0.0",
+    health: "/api/health",
+  });
+});
+
+/* =====================================================
+   9️⃣ 404 HANDLER
+===================================================== */
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: "Route not found",
+    path: req.originalUrl,
+  });
+});
+
+/* =====================================================
+   1️⃣0️⃣ ERROR HANDLER
+===================================================== */
+app.use((err, req, res, next) => {
+  console.error("❌ Server Error:", err);
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  const statusCode = err.statusCode || 500;
+  res.status(statusCode).json({
+    success: false,
+    message: process.env.NODE_ENV === "development" 
+      ? err.message 
+      : "Internal server error",
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack })
+  });
+});
+
+/* =====================================================
+   1️⃣1️⃣ START SERVER
+===================================================== */
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});

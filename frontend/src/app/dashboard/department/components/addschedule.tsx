@@ -1,0 +1,2466 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client";
+
+import React, { useEffect, useState, useMemo } from "react";
+import {
+  Card,
+  Title,
+  Text,
+  Group,
+  Button,
+  Stack,
+  Container,
+  Grid,
+  Select,
+  TextInput,
+  Badge,
+  LoadingOverlay,
+  Alert,
+  Paper,
+  ThemeIcon,
+  SimpleGrid,
+  Box,
+  ActionIcon,
+  Modal,
+  Avatar,
+  Progress,
+  Divider,
+  Menu,
+  Tabs,
+  Accordion,
+  Switch,
+  Tooltip,
+  Radio,
+  Table,
+  ScrollArea,
+} from "@mantine/core";
+import {
+  IconCalendar,
+  IconPlus,
+  IconTrash,
+  IconEdit,
+  IconCheck,
+  IconX,
+  IconSearch,
+  IconCalendarTime,
+  IconBooks,
+  IconUsers,
+  IconBuilding,
+  IconClock,
+  IconSchool,
+  IconSection,
+  IconCalendarEvent,
+  IconDotsVertical,
+  IconEye,
+  IconFilter,
+  IconMapPin,
+  IconBuildingCommunity,
+  IconStairs,
+  IconDoor,
+  IconWorldUpload,
+  IconWorldDownload,
+  IconRefresh,
+  IconRobot,
+  IconHandFinger,
+  IconArrowRight,
+  IconAlertCircle,
+  IconAlertTriangle,
+  IconBulb,
+  IconSparkles,
+} from "@tabler/icons-react";
+import { useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
+
+// Redux imports
+import { useAppDispatch, useAppSelector } from "@/hooks/redux";
+import {
+  fetchSchedules,
+  fetchInstructors,
+  fetchCourses,
+  fetchRooms,
+  fetchSession,
+  fetchRoomHierarchy,
+  fetchTodaySchedule,
+  saveSchedule,
+  AutoGenerateSchedule,
+  updateSchedule,
+  deleteSchedule,
+  toggleScheduleStatus,
+  setBatch,
+  setSemester,
+  setSection,
+  setDay,
+  setCourses,
+  addCourse,
+  removeCourse,
+  updateCourse,
+  addDaySchedule,
+  removeDaySchedule,
+  resetForm,
+  setEditingSchedule,
+  fetchBatches,
+  fetchSemesters,
+  fetchDepartments,
+  fetchAiScheduleSuggestion,
+  fetchAiConflictResolution,
+  regenerateConflicts,
+} from "@/store/slices/scheduleSlice";
+import {
+  selectSchedules,
+  selectCurrentSchedule,
+  selectInstructors,
+  selectCourses,
+  selectBatches,
+  selectRooms,
+  selectLoading,
+  selectSubmitting,
+  selectError,
+  selectRoomHierarchy,
+  selectTodaySchedules,
+  selectTodayLoading,
+  selectSemesters,
+  selectBatchLoading,
+  selectSemesterLoading,
+  selectDeptLoading,
+  selectBatchOptions,
+  selectSemesterOptions,
+  selectAiSuggestions,
+  selectAiLoading,
+  selectAiError,
+  selectAiConflictPlan,
+  selectAiConflictLoading,
+  selectAiConflictError,
+} from "@/store/selectors/scheduleSelectors";
+import { Authentication, Found } from "@/app/auth/auth";
+import AiScheduleModal from "./AiScheduleModal";
+
+interface FilterState {
+  searchTerm: string;
+  status: string;
+  batch: string;
+  semester: string;
+  block: string;
+  roomType: string;
+}
+
+const ScheduleDashboard: React.FC = () => {
+  const dispatch = useAppDispatch();
+  
+  // Redux selectors
+  const schedules = useAppSelector(selectSchedules);
+  const currentSchedule = useAppSelector(selectCurrentSchedule);
+  const instructors = useAppSelector(selectInstructors);
+  const courses = useAppSelector(selectCourses);
+  const rooms = useAppSelector(selectRooms);
+  const batches = useAppSelector(selectBatches);
+  const semesters = useAppSelector(selectSemesters);
+  const loading = useAppSelector(selectLoading);
+  const batchLoading = useAppSelector(selectBatchLoading);
+  const semesterLoading = useAppSelector(selectSemesterLoading);
+  const deptLoading = useAppSelector(selectDeptLoading);
+  const submitting = useAppSelector(selectSubmitting);
+  const error = useAppSelector(selectError);
+  const roomHierarchy = useAppSelector(selectRoomHierarchy);
+  const todaySchedules = useAppSelector(selectTodaySchedules);
+  const todayLoading = useAppSelector(selectTodayLoading);
+  const batchOptions = useAppSelector(selectBatchOptions);
+  const semesterOptions = useAppSelector(selectSemesterOptions);
+  
+  // Local state
+  const [activeTab, setActiveTab] = useState<string>("schedules");
+  const [filters, setFilters] = useState<FilterState>({
+    searchTerm: "",
+    status: "all",
+    batch: "all",
+    semester: "all",
+    block: "all",
+    roomType: "all"
+  });
+  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
+  const [publishModalOpened, { open: openPublishModal, close: closePublishModal }] = useDisclosure(false);
+  const [roomModalOpened, { open: openRoomModal, close: closeRoomModal }] = useDisclosure(false);
+  const [scheduleToDelete, setScheduleToDelete] = useState<string | null>(null);
+  const [scheduleToPublish, setScheduleToPublish] = useState<any>(null);
+  const [editingSchedule, setEditingScheduleState] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [publishLoading, setPublishLoading] = useState<string | null>(null);
+  const [creationMode, setCreationMode] = useState<"auto" | "manual" | null>(null);
+  const [autoGenerateModalOpened, { open: openAutoGenerateModal, close: closeAutoGenerateModal }] = useDisclosure(false);
+  const [autoGenerateData, setAutoGenerateData] = useState({
+    batch: "",
+    semester: "",
+    section: "",
+  });
+  const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+  const [lastGeneratedScheduleId, setLastGeneratedScheduleId] = useState<string | null>(null);
+  const roomTypes = ["classroom", "lab", "office", "conference", "library"];
+  const colorPalette = [
+    "#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6",
+    "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1"
+  ];
+  const allDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const letters = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
+
+  // Fetch data
+  useEffect(() => {
+    dispatch(fetchSchedules());
+    dispatch(fetchInstructors());
+    dispatch(fetchCourses());
+    dispatch(fetchRooms());
+    dispatch(fetchSession());
+    dispatch(fetchRoomHierarchy());
+    dispatch(fetchTodaySchedule());
+    dispatch(fetchBatches());
+    dispatch(fetchSemesters());
+    dispatch(fetchDepartments());
+  }, [dispatch]);
+
+  // Check authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      const foundUser = await Found();
+      setUser(foundUser);
+    };
+    checkAuth();
+  }, []);
+
+  // Filter schedules based on department and filters
+  const departmentSchedules = useMemo(() => {
+    return schedules.filter(schedule => 
+      !user?.department_id || schedule.department_id === user.department_id
+    );
+  }, [schedules, user?.department_id]);
+
+  // Get filtered schedules
+  const filteredSchedules = useMemo(() => {
+    return departmentSchedules.filter(schedule => {
+      // Search term filter
+      const matchesSearch = filters.searchTerm === "" || 
+        schedule.batch?.toString()?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
+        schedule.id?.toString()?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
+        schedule.section?.toString()?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
+        schedule.days?.some((day: any) => 
+          day.courses?.some((course: any) => 
+            courses.find(c => c.course_id === course.course_id)?.course_name?.toLowerCase().includes(filters.searchTerm.toLowerCase())
+          )
+        );
+
+      // Status filter
+      const matchesStatus = filters.status === "all" || schedule.status === filters.status;
+      
+      // Batch filter
+      const matchesBatch = filters.batch === "all" || schedule.batch === filters.batch;
+      
+      // Semester filter
+      const matchesSemester = filters.semester === "all" || schedule.semester === filters.semester;
+
+      return matchesSearch && matchesStatus && matchesBatch && matchesSemester;
+    });
+  }, [departmentSchedules, filters, courses]);
+const [conflictModalOpen, setConflictModalOpen] = useState(false);
+const [conflictsData, setConflictsData] = useState<any[]>([]);
+const [isRegenerating, setIsRegenerating] = useState(false);
+
+const openConflictModal = (conflicts: any[]) => {
+  setConflictsData(conflicts);
+  setConflictModalOpen(true);
+};
+
+const handleRegenerateConflicts = async () => {
+  if (!lastGeneratedScheduleId) {
+    notifications.show({
+      title: "⚠️ No Schedule Selected",
+      message: "No recent schedule ID available to re-generate conflicts.",
+      color: "yellow",
+    });
+    return;
+  }
+
+  setIsRegenerating(true);
+  try {
+    const res = await dispatch(regenerateConflicts(lastGeneratedScheduleId)).unwrap();
+    notifications.show({
+      title: res.remaining_conflicts_count === 0 ? "🎉 Success!" : "ℹ️ Conflicts Updated",
+      message: res.message || `Re-scheduled ${res.resolved_count} course(s) into free slots.`,
+      color: res.remaining_conflicts_count === 0 ? "teal" : "blue",
+    });
+
+    if (res.remaining_conflicts_count === 0) {
+      setConflictModalOpen(false);
+    } else {
+      setConflictsData(res.remaining_conflicts || []);
+    }
+    dispatch(fetchSchedules());
+  } catch (err: any) {
+    notifications.show({
+      title: "❌ Error",
+      message: typeof err === "string" ? err : err?.message || "Failed to re-schedule conflicts",
+      color: "red",
+    });
+  } finally {
+    setIsRegenerating(false);
+  }
+};
+
+// 🤖 AI State & Handlers
+const aiSuggestions = useAppSelector(selectAiSuggestions);
+const aiLoading = useAppSelector(selectAiLoading);
+const aiError = useAppSelector(selectAiError);
+const aiConflictPlan = useAppSelector(selectAiConflictPlan);
+const aiConflictLoading = useAppSelector(selectAiConflictLoading);
+const aiConflictError = useAppSelector(selectAiConflictError);
+
+const [aiModalOpened, setAiModalOpened] = useState(false);
+const [aiActiveSchedule, setAiActiveSchedule] = useState<any>(null);
+const [aiModalMode, setAiModalMode] = useState<"analysis" | "conflicts">("analysis");
+
+const handleOpenAiAnalysis = (schedule: any) => {
+  setAiActiveSchedule(schedule);
+  setAiModalMode("analysis");
+  setAiModalOpened(true);
+  dispatch(fetchAiScheduleSuggestion(schedule.id));
+};
+
+const handleAskAiResolveConflicts = () => {
+  setAiModalMode("conflicts");
+  setAiModalOpened(true);
+  dispatch(
+    fetchAiConflictResolution({
+      schedule_id: lastGeneratedScheduleId || undefined,
+      conflicts: conflictsData,
+      batch_id: autoGenerateData.batch,
+      semester_id: autoGenerateData.semester,
+      section: autoGenerateData.section,
+      department_id: user?.department_id,
+    })
+  );
+};
+
+
+
+  // Get filtered rooms
+  const filteredRooms = useMemo(() => {
+    return rooms.filter(room => {
+      const matchesBlock = filters.block === "all" || room.block_id?.toString() === filters.block;
+      const matchesRoomType = filters.roomType === "all" || room.room_type === filters.roomType;
+      const matchesSearch = filters.searchTerm === "" || 
+        room.room_number?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
+        room.room_name?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
+        room.block_name?.toLowerCase().includes(filters.searchTerm.toLowerCase());
+
+      return matchesBlock && matchesRoomType && matchesSearch;
+    });
+  }, [rooms, filters]);
+
+  // Room options with hierarchy information
+  const roomOptions = rooms.map((room: any) => ({
+    value: room.room_id.toString(),
+    label: `${room.block_code} - ${room.room_number} (${room.room_type})`,
+    capacity: room.capacity,
+    facilities: room.facilities
+  }));
+
+  const instructorOptions = instructors.map((inst: any) => ({
+    value: inst.id.toString(),
+    label: inst.full_name,
+  }));
+
+  // Batch options from database
+  const batchFilter = useMemo(() => {
+    if (!Array.isArray(batches)) return [];
+    
+    // Get unique batches from schedules first
+    const scheduleBatches = [...new Set(departmentSchedules.map(s => s.batch).filter(Boolean))];
+    
+    // Combine with database batches
+    const allBatches = [...new Set([
+      ...scheduleBatches,
+      ...batches.map(b => b.batch_year?.toString()).filter(Boolean)
+    ])];
+    
+    return [
+      { value: "all", label: "All Batches" },
+      ...allBatches.map(batch => ({
+        value: batch,
+        label: `Batch ${batch}`
+      }))
+    ];
+  }, [batches, departmentSchedules]);
+
+  // Semester options from database
+  const semesterFilter = useMemo(() => {
+    if (!Array.isArray(semesters)) return [];
+    
+    // Get unique semesters from schedules first
+    const scheduleSemesters = [...new Set(departmentSchedules.map(s => s.semester).filter(Boolean))];
+    
+    // Combine with database semesters
+    const allSemesters = [...new Set([
+      ...scheduleSemesters,
+      ...semesters.map(s => s.semester?.toString()).filter(Boolean)
+    ])];
+    
+    return [
+      { value: "all", label: "All Semesters" },
+      ...allSemesters.map(semester => ({
+        value: semester,
+        label: semester, 
+      }))
+    ];
+  }, [semesters, departmentSchedules]);
+
+  const courseOptions = courses.map((course: any) => ({
+    value: course.course_id.toString(),
+    label: `${course.course_code} - ${course.course_name}`,
+  }));
+
+  const sectionOptions = [
+    { value: "", label: "Select Section" },
+    { value: "1", label: "Single Class" },
+    ...letters.map((letter) => ({
+      value: letter,
+      label: `Section ${letter}`,
+    })),
+  ];
+
+  // Available days for current schedule
+  const availableDays = allDays.filter(d => 
+    !currentSchedule.days.some((s: any) => s.day_of_week === d)
+  );
+
+// Helper function to generate suggestions
+const getConflictSolution = (conflict: any) => {
+  const reason = conflict.reason?.toLowerCase() || '';
+  
+  if (reason.includes('instructor')) {
+    return "Assign different instructor or adjust schedule";
+  } else if (reason.includes('room')) {
+    return "Use different room or adjust timing";
+  } else if (reason.includes('no available slot')) {
+    return "Extend scheduling hours or reduce sessions";
+  } else if (reason.includes('type') && reason.includes('room')) {
+    return "Ensure LAB sessions use lab rooms only";
+  } else if (reason.includes('load')) {
+    return "Reduce instructor workload per day";
+  } else if (reason.includes('capacity')) {
+    return "Use larger capacity room";
+  } else if (reason.includes('global conflict')) {
+    return "Instructor has another class at same time";
+  }
+  
+  return "Manual scheduling required";
+};
+  // Get status counts for filters
+  const statusCounts = {
+    all: departmentSchedules.length,
+    draft: departmentSchedules.filter(s => s.status === "draft").length,
+    published: departmentSchedules.filter(s => s.status === "published").length,
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = 
+    filters.searchTerm !== "" || 
+    filters.status !== "all" || 
+    filters.batch !== "all" || 
+    filters.semester !== "all" ||
+    filters.block !== "all" ||
+    filters.roomType !== "all";
+
+  // Handlers
+  const handleAddCourse = () => {
+    dispatch(addCourse());
+  };
+
+  const handleRemoveCourse = (index: number) => {
+    dispatch(removeCourse(index));
+  };
+
+  const handleCourseChange = (index: number, field: string, value: any) => {
+    dispatch(updateCourse({ index, field, value }));
+  };
+
+  const handleSaveDaySchedule = () => {
+    if (!currentSchedule.day) {
+      notifications.show({
+        title: "Validation Error",
+        message: "Please select a day",
+        color: "red",
+      });
+      return;
+    }
+
+    // Validate courses
+    for (const course of currentSchedule.courses) {
+      if (!course.course_id || !course.instructor_id || !course.room_id) {
+        notifications.show({
+          title: "Validation Error",
+          message: "Please fill all required fields for each course",
+          color: "red",
+        });
+        return;
+      }
+    }
+
+    const newDaySchedule = {
+      id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+      batch: currentSchedule.batch,
+      semester: currentSchedule.semester,
+      section: currentSchedule.section,
+      department_id: user?.department_id,
+      day_of_week: currentSchedule.day,
+      courses: [...currentSchedule.courses],
+    };
+
+    dispatch(addDaySchedule(newDaySchedule));
+    
+    // Reset for next day
+    dispatch(setDay(""));
+    dispatch(setCourses([{
+      id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+      course_id: 0,
+      room_id: 0,
+      instructor_id: 0,
+      startTime: "08:00",
+      endTime: "09:00",
+      color: colorPalette[0],
+      course_name: undefined,
+      course_code: undefined,
+      instructor_name: undefined,
+      block_code: undefined,
+      room_number: undefined,
+      room_type: undefined
+    }]));
+  };
+
+  const handleSubmit = async (publish: boolean = false) => {
+    if (currentSchedule.days.length === 0) {
+      notifications.show({
+        title: "Validation Error",
+        message: "Please add at least one day schedule",
+        color: "red",
+      });
+      return;
+    }
+
+    try {
+      const scheduleData = {
+        batch: currentSchedule.batch,
+        semester: currentSchedule.semester,
+        section: currentSchedule.section,
+        department_id: user?.department_id,
+        schedule: currentSchedule.days,
+      };
+
+      if (isEditing && editingSchedule) {
+        await dispatch(updateSchedule({ 
+          scheduleId: editingSchedule.id, 
+          scheduleData, 
+          publish 
+        })).unwrap();
+        notifications.show({
+          title: "Success!",
+          message: `Schedule ${publish ? "published" : "updated"} successfully!`,
+          color: "teal",
+        });
+      } else {
+        await dispatch(saveSchedule({ scheduleData, publish })).unwrap();
+        notifications.show({
+          title: "Success!",
+          message: `Schedule ${publish ? "published" : "saved as draft"} successfully!`,
+          color: "teal",
+        });
+      }
+      
+      dispatch(fetchSchedules());
+      handleResetForm();
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Failed to save schedule";
+      notifications.show({
+        title: "Error",
+        message: errMsg,
+        color: "red",
+      });
+    }
+  };
+
+  const handleEditSchedule = (schedule: any) => {
+    setEditingScheduleState(schedule);
+    setIsEditing(true);
+    dispatch(setEditingSchedule(schedule));
+    setActiveTab("create");
+    setCreationMode("manual");
+  };
+
+  const handleDeleteSchedule = async (scheduleId: string) => {
+    try {
+      await dispatch(deleteSchedule(scheduleId)).unwrap();
+      notifications.show({
+        title: "Success!",
+        message: "Schedule deleted successfully",
+        color: "teal",
+      });
+      closeDeleteModal();
+      dispatch(fetchSchedules());
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error as any);
+      notifications.show({
+        title: "Error",
+        message: errMsg || "Failed to delete schedule",
+        color: "red",
+      });
+    }
+  };
+
+  const handleTogglePublish = async (schedule: any) => {
+    setPublishLoading(schedule.id);
+    try {
+      await dispatch(toggleScheduleStatus({ 
+        scheduleId: schedule.id, 
+        currentStatus: schedule.status 
+      })).unwrap();
+      
+      notifications.show({
+        title: "Success!",
+        message: `Schedule ${schedule.status === "published" ? "unpublished" : "published"} successfully`,
+        color: "teal",
+      });
+      
+      dispatch(fetchSchedules());
+      closePublishModal();
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error as any);
+      notifications.show({
+        title: "Error",
+        message: errMsg || "Failed to update schedule status",
+        color: "red",
+      });
+    } finally {
+      setPublishLoading(null);
+    }
+  };
+
+  const handleQuickPublish = async (schedule: any) => {
+    setPublishLoading(schedule.id);
+    try {
+      await dispatch(toggleScheduleStatus({ 
+        scheduleId: schedule.id, 
+        currentStatus: schedule.status 
+      })).unwrap();
+      
+      notifications.show({
+        title: "Success!",
+        message: `Schedule ${schedule.status === "published" ? "unpublished" : "published"} successfully`,
+        color: "teal",
+      });
+      
+      dispatch(fetchSchedules());
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error as any);
+      notifications.show({
+        title: "Error",
+        message: errMsg || "Failed to update schedule status",
+        color: "red",
+      });
+    } finally {
+      setPublishLoading(null);
+    }
+  };
+
+  const handlePublishClick = (schedule: any) => {
+    setScheduleToPublish(schedule);
+    openPublishModal();
+  };
+
+  const handleResetForm = () => {
+    dispatch(resetForm());
+    setEditingScheduleState(null);
+    setIsEditing(false);
+    setCreationMode(null);
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      searchTerm: "",
+      status: "all",
+      batch: "all",
+      semester: "all",
+      block: "all",
+      roomType: "all"
+    });
+  };
+
+  const updateFilter = (key: keyof FilterState, value: string) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const progress = (currentSchedule.days.length / allDays.length) * 100;
+const handleAutoGenerate = async () => {
+  if (!autoGenerateData.batch || !autoGenerateData.semester || !autoGenerateData.section) {
+    notifications.show({
+      title: "Validation Error",
+      message: "Please select batch, semester, and section",
+      color: "red",
+    });
+    return;
+  }
+
+  setIsAutoGenerating(true);
+
+  try {
+    const scheduleData = {
+      batch_id: autoGenerateData.batch,
+      semester_id: autoGenerateData.semester,
+      section: autoGenerateData.section,
+      department_id: user?.department_id,
+    };
+
+    console.log("📤 Sending auto-generate request with data:", scheduleData);
+    
+    // Call Redux async thunk
+    const result = await dispatch(AutoGenerateSchedule({ scheduleData })).unwrap();
+    
+    console.log("📥 Received response from backend:", result);
+    if (result.schedule_id) {
+  setLastGeneratedScheduleId(result.schedule_id);
+}
+
+    // Check the actual response structure
+    if (result && typeof result === 'object') {
+      console.log("Response keys:", Object.keys(result));
+      console.log("Success status:", result.success);
+      console.log("Conflicts:", result.conflicts);
+      console.log("Message:", result.message);
+      console.log("Total sessions:", result.total_sessions);
+      console.log("Scheduled sessions:", result.scheduled_sessions);
+      
+      if (result.success === false || result.conflicts?.length > 0) {
+        // This is a PARTIAL success with conflicts
+        console.log("Partial generation with conflicts");
+        
+        // Show the conflicts in a notification
+        notifications.show({
+          title: "⚠️ Schedule Generated with Conflicts",
+          message: (
+            <div>
+              <Text size="sm">
+                {result.scheduled_sessions || 0}/{result.total_sessions || 0} sessions scheduled
+              </Text>
+              <Text size="xs" c="orange" mt={4}>
+                {result.conflicts?.length || 0} conflicts found
+              </Text>
+              {result.message && (
+                <Text size="xs" c="dimmed" mt={2}>
+                  {result.message}
+                </Text>
+              )}
+            </div>
+          ),
+          color: "orange",
+          autoClose: false, // Keep open so user can see details
+        });
+        
+        // Open conflict modal with detailed data
+        if (result.conflicts && result.conflicts.length > 0) {
+          openConflictModal(result.conflicts);
+          console.log("Opening conflict modal with:", result.conflicts);
+        }
+        
+        // Show what percentage was scheduled
+        const successRate = result.total_sessions 
+          ? Math.round((result.scheduled_sessions / result.total_sessions) * 100)
+          : 0;
+        
+        notifications.show({
+          title: "📊 Generation Summary",
+          message: `${successRate}% of sessions scheduled successfully`,
+          color: "blue",
+          autoClose: 3000,
+        });
+        
+      } else if (result.success === true) {
+        // FULL success
+        notifications.show({
+          title: "✅ Schedule Generated Successfully",
+          message: `All ${result.scheduled_sessions} sessions scheduled`,
+          color: "green",
+        });
+      }
+      
+      // Always switch to manual mode after generation
+      setCreationMode("manual");
+      closeAutoGenerateModal();
+      
+      // Refresh schedules list
+      dispatch(fetchSchedules());
+      
+    } else {
+      // Unexpected response format
+      console.error("Unexpected response format:", result);
+      notifications.show({
+        title: "❌ Unexpected Response",
+        message: "Received unexpected data format from server",
+        color: "red",
+      });
+    }
+
+  } catch (error: any) {
+    console.error("❌ Auto-generation error:", error);
+    
+    // Differentiate between network errors and backend errors
+    let errorMessage = "Network or server error";
+    let errorTitle = "Auto-Generation Failed";
+    
+    if (error?.status === 400 || error?.status === 500) {
+      errorTitle = "Backend Error";
+      if (error?.data?.error) {
+        errorMessage = error.data.error;
+      } else if (error?.data?.message) {
+        errorMessage = error.data.message;
+      }
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else if (error?.message) {
+      errorMessage = error.message;
+    }
+    
+    notifications.show({
+      title: errorTitle,
+      message: errorMessage,
+      color: "red",
+      autoClose: false, // Keep error open
+    });
+  } finally {
+    setIsAutoGenerating(false);
+  }
+};
+
+
+  const handleStartManualCreation = () => {
+    setCreationMode("manual");
+    // Reset form and start fresh
+    dispatch(resetForm());
+    dispatch(setCourses([{
+      id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+      course_id: 0,
+      room_id: 0,
+      instructor_id: 0,
+      startTime: "08:00",
+      endTime: "09:00",
+      color: colorPalette[0],
+      course_name: undefined,
+      course_code: undefined,
+      instructor_name: undefined,
+      block_code: undefined,
+      room_number: undefined,
+      room_type: undefined
+    }]));
+  };
+
+  const handleStartAutoGeneration = () => {
+    openAutoGenerateModal();
+  };
+
+  // Loading states
+  const isLoading = loading || batchLoading || semesterLoading || deptLoading || todayLoading;
+
+  if (user === null) {
+    return <Authentication />;
+  }
+
+  return (
+    <Container size="lg" py="xl">
+      <Stack gap="lg">
+        {/* Header */}
+        <Card 
+          shadow="md" 
+          padding="lg" 
+          radius="lg" 
+          withBorder
+          className="border-blue-200 bg-gradient-to-br from-blue-50/80 to-cyan-50/80"
+        >
+          <Group justify="space-between" wrap="nowrap">
+            <div>
+              <Group>
+                <ThemeIcon size={48} color="blue" variant="light" radius="lg">
+                  <IconCalendarTime size={24} />
+                </ThemeIcon>
+                <div>
+                  <Title order={2} className="text-blue-800">
+                    Academic Schedule Management
+                  </Title>
+                  <Text c="dimmed" size="lg">
+                    Manage schedules, rooms, and classes for {new Date().getFullYear()}
+                  </Text>
+                  {user?.department_name && (
+                    <Badge color="blue" variant="light" size="sm" mt={4}>
+                      Department: {user.department_name}
+                    </Badge>
+                  )}
+                </div>
+              </Group>
+            </div>
+            <Group>
+              <Badge color="blue" variant="filled" size="xl" radius="sm">
+                {departmentSchedules.length} Schedules
+              </Badge>
+              <Badge color="green" variant="filled" size="xl" radius="sm">
+                {rooms.length} Rooms
+              </Badge>
+              <Badge color="orange" variant="filled" size="xl" radius="sm">
+                {batches.length} Batches
+              </Badge>
+            </Group>
+          </Group>
+        </Card>
+
+        
+        {/* Today's Schedule */}
+        {todaySchedules?.length > 0 && (
+          <Card 
+            shadow="sm" 
+            padding="lg" 
+            radius="lg" 
+            withBorder
+            className="border-green-200 bg-gradient-to-r from-green-50 to-emerald-50"
+          >
+            <Card.Section withBorder inheritPadding py="md" className="bg-gradient-to-r from-green-500 to-emerald-500">
+              <Group justify="space-between">
+                <Group>
+                  <ThemeIcon size={32} color="white" variant="transparent">
+                    <IconCalendar size={20} />
+                  </ThemeIcon>
+                  <Text fw={700} size="lg" className="text-white">
+                    Today&apos;s Schedule
+                  </Text>
+                </Group>
+                <Badge color="white" variant="filled" size="lg" className="text-green-600">
+                  {Array.isArray(todaySchedules) ? todaySchedules.length : 0} classes today
+                </Badge>
+              </Group>
+            </Card.Section>
+
+            {Array.isArray(todaySchedules) && todaySchedules.length > 0 ? (
+              <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md" mt="md">
+                {todaySchedules.slice(0, 6).map((schedule) => (
+                  <Paper 
+                    key={schedule.id} 
+                    p="md" 
+                    withBorder 
+                    className="border-green-200 bg-white"
+                    radius="lg"
+                  >
+                    <Group justify="space-between" mb="sm">
+                      <Text fw={600} className="text-green-700">
+                        {schedule.course_name}
+                      </Text>
+                      <Badge color="blue" variant="light" size="sm">
+                        {schedule.start_time} - {schedule.end_time}
+                      </Badge>
+                    </Group>
+                    <Stack gap="xs">
+                      <Group gap="xs">
+                        <IconUsers size={14} className="text-gray-600" />
+                        <Text size="sm">{schedule.instructor_name}</Text>
+                      </Group>
+                      <Group gap="xs">
+                        <IconMapPin size={14} className="text-gray-600" />
+                        <Text size="sm">{schedule.location}</Text>
+                      </Group>
+                      <Group gap="xs">
+                        <IconBuilding size={14} className="text-gray-600" />
+                        <Text size="sm">{schedule.batch} - Sec {schedule.section}</Text>
+                      </Group>
+                    </Stack>
+                  </Paper>
+                ))}
+              </SimpleGrid>
+            ) : (
+              <div className="min-h-[100px] flex items-center justify-center">
+                <Text c="dimmed" size="sm">
+                  No classes scheduled for today
+                </Text>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* Main Tabs */}
+        <Card 
+          shadow="sm" 
+          padding="lg" 
+          radius="lg" 
+          withBorder
+          className="border-purple-100 bg-gradient-to-br from-purple-50/30 to-pink-50/30"
+        >
+          <Tabs value={activeTab} onChange={(value) => {
+            setActiveTab(value || "schedules");
+            if (value !== "create") {
+              setCreationMode(null);
+            }
+          }}>
+            <Tabs.List grow>
+              <Tabs.Tab 
+                value="schedules" 
+                leftSection={<IconCalendarTime size={16} />}
+              >
+                Schedules ({departmentSchedules.length})
+              </Tabs.Tab>
+              <Tabs.Tab 
+                value="create" 
+                leftSection={<IconPlus size={16} />}
+              >
+                {isEditing ? "Edit Schedule" : "Create Schedule"}
+              </Tabs.Tab>
+              <Tabs.Tab 
+                value="rooms" 
+                leftSection={<IconBuilding size={16} />}
+              >
+                Room Management ({rooms.length})
+              </Tabs.Tab>
+            </Tabs.List>
+
+            {/* Schedules Tab */}
+            <Tabs.Panel value="schedules" pt="md">
+              <Stack gap="md">
+                {/* Filter Section */}
+                <Card 
+                  shadow="sm" 
+                  padding="lg" 
+                  radius="lg" 
+                  withBorder
+                  className="border-gray-200 bg-gray-50"
+                >
+                  <Group justify="space-between" mb="md">
+                    <Group gap="xs">
+                      <IconFilter size={20} className="text-gray-600" />
+                      <Text fw={500} size="lg">Filter & Search Schedules</Text>
+                      <Badge color="blue" variant="light">
+                        {statusCounts.published} Published • {statusCounts.draft} Draft
+                      </Badge>
+                    </Group>
+                    <Group>
+                      {hasActiveFilters && (
+                        <Button 
+                          variant="subtle" 
+                          size="sm" 
+                          onClick={clearFilters}
+                          color="gray"
+                        >
+                          Clear All
+                        </Button>
+                      )}
+                      <Text size="sm" c="dimmed">
+                        {filteredSchedules.length} of {departmentSchedules.length} schedules
+                      </Text>
+                    </Group>
+                  </Group>
+
+                  <Grid gutter="md">
+                    <Grid.Col span={{ base: 12, md: 3 }}>
+                      <TextInput
+                        placeholder="Search schedules..."
+                        value={filters.searchTerm}
+                        onChange={(e) => updateFilter("searchTerm", e.target.value)}
+                        leftSection={<IconSearch size={16} />}
+                      />
+                    </Grid.Col>
+                    <Grid.Col span={{ base: 12, md: 2 }}>
+                      <Select
+                        label="Status"
+                        value={filters.status}
+                        onChange={(value) => updateFilter("status", value || "all")}
+                        data={[
+                          { value: "all", label: `All Status (${statusCounts.all})` },
+                          { value: "draft", label: `Draft (${statusCounts.draft})` },
+                          { value: "published", label: `Published (${statusCounts.published})` },
+                        ]}
+                      />
+                    </Grid.Col>
+                    <Grid.Col span={{ base: 12, md: 2 }}>
+                      <Select
+                        label="Batch"
+                        value={filters.batch}
+                        onChange={(value) => updateFilter("batch", value || "all")}
+                        data={batchFilter}
+                      />
+                    </Grid.Col>
+                    <Grid.Col span={{ base: 12, md: 2 }}>
+                      <Select
+                        label="Semester"
+                        value={filters.semester}
+                        onChange={(value) => updateFilter("semester", value || "all")}
+                        data={semesterFilter}
+                      />
+                    </Grid.Col>
+                    <Grid.Col span={{ base: 12, md: 3 }}>
+                      <Box style={{ paddingTop: '24px' }}>
+                        {hasActiveFilters && (
+                          <Group gap="xs" wrap="wrap">
+                            {filters.searchTerm && (
+                              <Badge color="blue" variant="light" size="sm">
+                                Search: &quot;{filters.searchTerm}&quot;
+                              </Badge>
+                            )}
+                            {filters.status !== "all" && (
+                              <Badge color="blue" variant="light" size="sm">
+                                Status: {filters.status}
+                              </Badge>
+                            )}
+                            {filters.batch !== "all" && (
+                              <Badge color="green" variant="light" size="sm">
+                                Batch: {filters.batch}
+                              </Badge>
+                            )}
+                            {filters.semester !== "all" && (
+                              <Badge color="orange" variant="light" size="sm">
+                                Semester: {filters.semester}
+                              </Badge>
+                            )}
+                          </Group>
+                        )}
+                      </Box>
+                    </Grid.Col>
+                  </Grid>
+                </Card>
+
+                {/* Schedules List */}
+                {isLoading ? (
+                  <div className="min-h-[200px] flex items-center justify-center">
+                    <LoadingOverlay visible={isLoading} />
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
+                      <Text c="dimmed">Loading data...</Text>
+                    </div>
+                  </div>
+                ) : filteredSchedules.length === 0 ? (
+                  <div className="min-h-[200px] flex items-center justify-center">
+                    <div className="text-center">
+                      <ThemeIcon size={48} color="gray" variant="light" className="mb-4">
+                        <IconCalendar size={24} />
+                      </ThemeIcon>
+                      <Title order={4} c="dimmed" mb="xs">
+                        {hasActiveFilters ? "No schedules match your filters" : "No schedules found"}
+                      </Title>
+                      <Text c="dimmed" size="sm">
+                        {hasActiveFilters ? "Try adjusting your filter criteria" : "Create your first schedule to get started"}
+                      </Text>
+                      {hasActiveFilters && (
+                        <Button 
+                          variant="subtle" 
+                          size="sm" 
+                          onClick={clearFilters}
+                          mt="md"
+                        >
+                          Clear Filters
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
+                    {filteredSchedules.map((schedule) => (
+                      <Paper 
+                        key={schedule.id} 
+                        p="lg" 
+                        withBorder 
+                        className={`border-2 ${
+                          schedule.status === "published" 
+                            ? "border-green-200 bg-gradient-to-br from-green-50/50 to-emerald-50/50" 
+                            : "border-yellow-200 bg-gradient-to-br from-yellow-50/50 to-amber-50/50"
+                        } hover:shadow-lg transition-all duration-200 hover:scale-[1.02]`}
+                        radius="lg"
+                      >
+                        <Group justify="space-between" mb="sm">
+                          <div>
+                            <Text fw={600} className="text-purple-700 text-lg">
+                              Batch {schedule.batch} 
+                            </Text>
+                            <Text size="sm" c="dimmed">
+                              {schedule.semester} • Section {schedule.section === "1" ? "Single Class" : schedule.section}
+                            </Text>
+                          </div>
+                          <Badge 
+                            color={schedule.status === "published" ? "green" : "yellow"}
+                            variant="light"
+                            size="lg"
+                            leftSection={
+                              schedule.status === "published" ? 
+                                <IconWorldUpload size={12} /> : 
+                                <IconWorldDownload size={12} />
+                            }
+                          >
+                            {schedule.status}
+                          </Badge>
+                        </Group>
+                        
+                        <Stack gap="sm" mb="md">
+                          {schedule.days.slice(0, 3).map((day: any) => (
+                            <Group key={day.id} justify="apart">
+                              <Text size="sm" className="text-gray-600" fw={500}>
+                                {day.day_of_week}
+                              </Text>
+                              <Badge color="blue" variant="light" size="sm">
+                                {day.courses.length} courses
+                              </Badge>
+                            </Group>
+                          ))}
+                          {schedule.days.length > 3 && (
+                            <Text size="sm" c="dimmed" className="text-center">
+                              +{schedule.days.length - 3} more days
+                            </Text>
+                          )}
+                        </Stack>
+
+                        {/* Quick Publish/Unpublish Toggle */}
+                        <Group justify="apart" mb="sm">
+                          <Tooltip
+                            label={schedule.status === "published" ? "Unpublish schedule" : "Publish schedule"}
+                            position="top"
+                          >
+                            <Switch
+                              checked={schedule.status === "published"}
+                              onChange={() => handleQuickPublish(schedule)}
+                              disabled={publishLoading === schedule.id}
+                              size="md"
+                              color="teal"
+                              thumbIcon={
+                                publishLoading === schedule.id ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                ) : schedule.status === "published" ? (
+                                  <IconWorldUpload size={12} />
+                                ) : (
+                                  <IconWorldDownload size={12} />
+                                )
+                              }
+                            />
+                          </Tooltip>
+                          <Text size="sm" c="dimmed">
+                            {schedule.status === "published" ? "Published" : "Draft"}
+                          </Text>
+                        </Group>
+
+                        <Divider my="sm" />
+
+                        <Group justify="apart">
+                          <Group gap="xs">
+                            <Text size="xs" c="dimmed">
+                              {new Date(schedule.created_at).toLocaleDateString()}
+                            </Text>
+                            <Tooltip label="AI Quality & Optimization Analysis">
+                              <ActionIcon
+                                variant="light"
+                                color="indigo"
+                                size="sm"
+                                radius="md"
+                                onClick={() => handleOpenAiAnalysis(schedule)}
+                              >
+                                <IconSparkles size={13} />
+                              </ActionIcon>
+                            </Tooltip>
+                          </Group>
+                          <Menu position="bottom-end">
+                            <Menu.Target>
+                              <ActionIcon variant="subtle" color="gray">
+                                <IconDotsVertical size={16} />
+                              </ActionIcon>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              <Menu.Item
+                                leftSection={<IconSparkles size={14} className="text-indigo-600" />}
+                                onClick={() => handleOpenAiAnalysis(schedule)}
+                                color="indigo"
+                              >
+                                🤖 AI Optimization Review
+                              </Menu.Item>
+                              <Menu.Item
+                                leftSection={<IconEye size={14} />}
+                                onClick={() => handleEditSchedule(schedule)}
+                              >
+                                View & Edit
+                              </Menu.Item>
+                              <Menu.Item
+                                leftSection={
+                                  schedule.status === "published" ? 
+                                    <IconWorldDownload size={14} /> : 
+                                    <IconWorldUpload size={14} />
+                                }
+                                onClick={() => handlePublishClick(schedule)}
+                                color={schedule.status === "published" ? "orange" : "green"}
+                              >
+                                {schedule.status === "published" ? "Unpublish" : "Publish"}
+                              </Menu.Item>
+                              <Menu.Divider />
+                              <Menu.Item
+                                leftSection={<IconTrash size={14} />}
+                                color="red"
+                                onClick={() => {
+                                  setScheduleToDelete(schedule.id);
+                                  openDeleteModal();
+                                }}
+                              >
+                                Delete
+                              </Menu.Item>
+                            </Menu.Dropdown>
+                          </Menu>
+                        </Group>
+                      </Paper>
+                    ))}
+                  </SimpleGrid>
+                )}
+              </Stack>
+            </Tabs.Panel>
+
+            {/* Create/Edit Schedule Tab */}
+            <Tabs.Panel value="create" pt="md">
+              {!creationMode && !isEditing ? (
+                // Selection screen for auto/manual creation
+                <Card 
+                  shadow="sm" 
+                  padding="xl" 
+                  radius="lg" 
+                  withBorder
+                  className="border-blue-100 bg-gradient-to-br from-blue-50/50 to-cyan-50/50"
+                >
+                  <Stack align="center" gap="xl" className="text-center">
+                    <ThemeIcon size={80} color="blue" variant="light" radius="xl">
+                      <IconCalendarEvent size={40} />
+                    </ThemeIcon>
+                    <div>
+                      <Title order={2} className="text-blue-800 mb-2">
+                        Create New Schedule
+                      </Title>
+                      <Text c="dimmed" size="lg">
+                        Choose how you want to create your schedule
+                      </Text>
+                    </div>
+
+                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl" w="100%" mt="md">
+                      {/* Auto Generate Option */}
+                      <Paper 
+                        p="xl" 
+                        withBorder 
+                        className="border-green-200 bg-gradient-to-br from-green-50/50 to-emerald-50/50 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                        radius="lg"
+                        onClick={handleStartAutoGeneration}
+                      >
+                        <Stack align="center" gap="md">
+                          <ThemeIcon size={60} color="green" variant="light" radius="xl">
+                            <IconRobot size={30} />
+                          </ThemeIcon>
+                          <div>
+                            <Title order={3} className="text-green-700 mb-2">
+                              Auto Generate
+                            </Title>
+                            <Text c="dimmed" size="sm">
+                              Let AI automatically generate a schedule based on your preferences
+                            </Text>
+                          </div>
+                          <Group mt="md">
+                            <Badge color="green" variant="light">
+                              Fast
+                            </Badge>
+                            <Badge color="green" variant="light">
+                              Smart
+                            </Badge>
+                            <Badge color="green" variant="light">
+                              Efficient
+                            </Badge>
+                          </Group>
+                          <Button 
+                            color="green" 
+                            variant="light" 
+                            size="md" 
+                            mt="sm"
+                            rightSection={<IconArrowRight size={16} />}
+                          >
+                            Start Auto Generation
+                          </Button>
+                        </Stack>
+                      </Paper>
+
+                      {/* Manual Creation Option */}
+                      <Paper 
+                        p="xl" 
+                        withBorder 
+                        className="border-blue-200 bg-gradient-to-br from-blue-50/50 to-cyan-50/50 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                        radius="lg"
+                        onClick={handleStartManualCreation}
+                      >
+                        <Stack align="center" gap="md">
+                          <ThemeIcon size={60} color="blue" variant="light" radius="xl">
+                            <IconHandFinger size={30} />
+                          </ThemeIcon>
+                          <div>
+                            <Title order={3} className="text-blue-700 mb-2">
+                              Manual Creation
+                            </Title>
+                            <Text c="dimmed" size="sm">
+                              Build your schedule manually with full control over every detail
+                            </Text>
+                          </div>
+                          <Group mt="md">
+                            <Badge color="blue" variant="light">
+                              Full Control
+                            </Badge>
+                            <Badge color="blue" variant="light">
+                              Flexible
+                            </Badge>
+                            <Badge color="blue" variant="light">
+                              Detailed
+                            </Badge>
+                          </Group>
+                          <Button 
+                            color="blue" 
+                            variant="light" 
+                            size="md" 
+                            mt="sm"
+                            rightSection={<IconArrowRight size={16} />}
+                          >
+                            Start Manual Creation
+                          </Button>
+                        </Stack>
+                      </Paper>
+                    </SimpleGrid>
+
+                    <Text size="sm" c="dimmed" mt="xl">
+                      You can switch between modes at any time during creation
+                    </Text>
+                  </Stack>
+                </Card>
+              ) : (
+                // Actual schedule creation form
+                <Grid gutter="xl">
+                  {/* Left Sidebar - Basic Info */}
+                  <Grid.Col span={{ base: 12, lg: 4 }}>
+                    <Stack gap="md">
+                      <Card 
+                        shadow="sm" 
+                        padding="lg" 
+                        radius="lg" 
+                        withBorder
+                        className="border-blue-100 sticky top-4 bg-gradient-to-br from-blue-50/50 to-white"
+                      >
+                        <Card.Section withBorder inheritPadding py="md" className="bg-gradient-to-r from-blue-500 to-blue-600">
+                          <Group justify="space-between">
+                            <Group>
+                              <ThemeIcon size={32} color="white" variant="transparent">
+                                <IconCalendarEvent size={20} />
+                              </ThemeIcon>
+                              <Text fw={700} size="lg" className="text-white">
+                                {isEditing ? "Edit Schedule" : "Schedule Setup"}
+                              </Text>
+                            </Group>
+                            {creationMode === "auto" && (
+                              <Badge color="green" variant="filled" size="sm">
+                                Auto-Generated
+                              </Badge>
+                            )}
+                          </Group>
+                        </Card.Section>
+
+                        <Stack gap="md" mt="md">
+                          <Select
+                            label="Batch Year"
+                            placeholder="Select batch"
+                            value={currentSchedule.batch}
+                            onChange={(value) => dispatch(setBatch(value || ""))}
+                            data={[
+                              { value: "", label: "Select Batch" },
+                              ...batchOptions.filter(b => b.value !== "all")
+                            ]}
+                            size="md"
+                            leftSection={<IconSchool size={16} />}
+                            disabled={batchLoading}
+                          />
+
+                          <Select
+                            label="Semester"
+                            placeholder="Select semester"
+                            value={currentSchedule.semester}
+                            onChange={(value) => dispatch(setSemester(value || ""))}
+                            data={[
+                              { value: "", label: "Select Semester" },
+                              ...semesterOptions.filter(s => s.value !== "all")
+                            ]}
+                            size="md"
+                            leftSection={<IconCalendar size={16} />}
+                            disabled={semesterLoading}
+                          />
+
+                          {currentSchedule.batch && currentSchedule.semester && (
+                            <Select
+                              label="Section"
+                              placeholder="Select section"
+                              value={currentSchedule.section}
+                              onChange={(value) => dispatch(setSection(value || ""))}
+                              data={sectionOptions}
+                              size="md"
+                              leftSection={<IconSection size={16} />}
+                            />
+                          )}
+
+                          {currentSchedule.section && availableDays.length > 0 && (
+                            <Select
+                              label="Day of Week"
+                              placeholder="Select day"
+                              value={currentSchedule.day}
+                              onChange={(value) => dispatch(setDay(value || ""))}
+                              data={availableDays.map(day => ({ value: day, label: day }))}
+                              size="md"
+                              leftSection={<IconCalendar size={16} />}
+                            />
+                          )}
+
+                          {/* Progress */}
+                          {currentSchedule.days.length > 0 && (
+                            <Paper p="md" className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                              <Group justify="apart" mb="xs">
+                                <Text size="sm" fw={500}>Progress</Text>
+                                <Text size="sm" c="dimmed">
+                                  {currentSchedule.days.length}/{allDays.length} days
+                                </Text>
+                              </Group>
+                              <Progress value={progress} color="blue" size="lg" radius="xl" />
+                            </Paper>
+                          )}
+
+                          {/* Mode Selection */}
+                          <Paper p="md" className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg border border-gray-200">
+                            <Text size="sm" fw={500} mb="xs">Creation Mode</Text>
+                         <Radio.Group
+                                  value={creationMode || ""}
+                                  onChange={(value: string) => {
+                                    if (value === "auto") {
+                                      openAutoGenerateModal();
+                                    } else if (value === "manual") {
+                                      setCreationMode(value as "manual");
+                                    }
+                                  }}
+                                >
+                                  <Stack gap="xs">
+                                    <Radio 
+                                      value="auto" 
+                                      label={
+                                        <Group gap="xs">
+                                          <IconRobot size={16} />
+                                          <Text>Auto Generate</Text>
+                                        </Group>
+                                      } 
+                                    />
+                                    <Radio 
+                                      value="manual" 
+                                      label={
+                                        <Group gap="xs">
+                                          <IconHandFinger size={16} />
+                                          <Text>Manual Creation</Text>
+                                        </Group>
+                                      } 
+                                    />
+                                  </Stack>
+                                </Radio.Group>
+                          </Paper>
+                        </Stack>
+                      </Card>
+
+                      {/* Action Buttons */}
+                      {currentSchedule.days.length > 0 && (
+                        <Card 
+                          shadow="sm" 
+                          padding="lg" 
+                          radius="lg" 
+                          withBorder
+                          className="border-green-100 bg-gradient-to-br from-green-50/50 to-emerald-50/50"
+                        >
+                          <Card.Section withBorder inheritPadding py="md" className="bg-gradient-to-r from-green-500 to-emerald-500">
+                            <Text fw={700} size="lg" className="text-white text-center">
+                              Ready to {isEditing ? "Update" : "Save"}
+                            </Text>
+                          </Card.Section>
+                          <Stack gap="sm" mt="md">
+                            <Button
+                              onClick={() => handleSubmit(false)}
+                              loading={submitting}
+                              leftSection={<IconCheck size={16} />}
+                              color="blue"
+                              size="md"
+                              fullWidth
+                            >
+                              {isEditing ? "Update Draft" : "Save as Draft"}
+                            </Button>
+                            <Button
+                              onClick={() => handleSubmit(true)}
+                              loading={submitting}
+                              leftSection={<IconCheck size={16} />}
+                              color="green"
+                              size="md"
+                              fullWidth
+                            >
+                              {isEditing ? "Publish Update" : "Publish Schedule"}
+                            </Button>
+                            <Button
+                              variant="light"
+                              onClick={handleResetForm}
+                              size="md"
+                              fullWidth
+                            >
+                              {isEditing ? "Cancel Edit" : "Reset All"}
+                            </Button>
+                          </Stack>
+                        </Card>
+                      )}
+                    </Stack>
+                  </Grid.Col>
+
+                  {/* Main Content - Course Management */}
+                  <Grid.Col span={{ base: 12, lg: 8 }}>
+                    <Stack gap="md">
+                      {/* Course Management */}
+                      {currentSchedule.day && (
+                        <Card 
+                          shadow="sm" 
+                          padding="lg" 
+                          radius="lg" 
+                          withBorder
+                          className="border-orange-100 bg-gradient-to-br from-orange-50/30 to-amber-50/30"
+                        >
+                          <Card.Section withBorder inheritPadding py="md" className="bg-gradient-to-r from-orange-500 to-amber-500">
+                            <Group justify="space-between">
+                              <Group>
+                                <ThemeIcon size={32} color="white" variant="transparent">
+                                  <IconBooks size={20} />
+                                </ThemeIcon>
+                                <div>
+                                  <Text fw={700} size="lg" className="text-white">
+                                    Courses for {currentSchedule.day}
+                                  </Text>
+                                  <Text size="sm" c="white" opacity={0.9}>
+                                    Batch {currentSchedule.batch} • {currentSchedule.semester} • Section {currentSchedule.section}
+                                  </Text>
+                                </div>
+                              </Group>
+                              <Button
+                                onClick={handleAddCourse}
+                                leftSection={<IconPlus size={16} />}
+                                color="white"
+                                variant="light"
+                                size="sm"
+                              >
+                                Add Course
+                              </Button>
+                            </Group>
+                          </Card.Section>
+
+                          <Stack gap="md" mt="md">
+                            {currentSchedule.courses.map((course: any, index: number) => (
+                              <Paper 
+                                key={course.id} 
+                                p="lg" 
+                                withBorder 
+                                className="border-orange-200 bg-gradient-to-br from-orange-50/50 to-yellow-50/50"
+                                radius="lg"
+                              >
+                                <Group justify="space-between" mb="md">
+                                  <Group>
+                                    <Box
+                                      w={20}
+                                      h={20}
+                                      style={{ backgroundColor: course.color }}
+                                      className="rounded-full border-2 border-white shadow-sm"
+                                    />
+                                    <Text fw={600} className="text-orange-700">
+                                      Course {index + 1}
+                                    </Text>
+                                  </Group>
+                                  <ActionIcon
+                                    color="red"
+                                    variant="light"
+                                    onClick={() => handleRemoveCourse(index)}
+                                    disabled={currentSchedule.courses.length <= 1}
+                                    size="lg"
+                                  >
+                                    <IconTrash size={16} />
+                                  </ActionIcon>
+                                </Group>
+
+                                <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+                                  <Select
+                                    label="Course"
+                                    placeholder="Select course"
+                                    value={course.course_id ? course.course_id.toString() : null}
+                                    onChange={(value) => handleCourseChange(index, "course_id", value ? parseInt(value) : 0)}
+                                    data={courseOptions}
+                                    size="sm"
+                                    leftSection={<IconBooks size={16} />}
+                                  />
+
+                                  <Select
+                                    label="Instructor"
+                                    placeholder="Select instructor"
+                                    value={course.instructor_id ? course.instructor_id.toString() : null}
+                                    onChange={(value) => handleCourseChange(index, "instructor_id", value ? parseInt(value) : 0)}
+                                    data={instructorOptions}
+                                    size="sm"
+                                    leftSection={<IconUsers size={16} />}
+                                  />
+
+                                  <Select
+                                    label="Room"
+                                    placeholder="Select room"
+                                    value={course.room_id ? course.room_id.toString() : null}
+                                    onChange={(value) => handleCourseChange(index, "room_id", value ? parseInt(value) : 0)}
+                                    data={roomOptions}
+                                    size="sm"
+                                    leftSection={<IconBuilding size={16} />}
+                                  />
+
+                                  <TextInput
+                                    label="Start Time"
+                                    type="time"
+                                    value={course.startTime}
+                                    onChange={(e) => handleCourseChange(index, "startTime", e.target.value)}
+                                    size="sm"
+                                    leftSection={<IconClock size={16} />}
+                                  />
+
+                                  <TextInput
+                                    label="End Time"
+                                    type="time"
+                                    value={course.endTime}
+                                    onChange={(e) => handleCourseChange(index, "endTime", e.target.value)}
+                                    size="sm"
+                                    leftSection={<IconClock size={16} />}
+                                  />
+
+                                  <Select
+                                    label="Color"
+                                    value={course.color}
+                                    onChange={(value) => handleCourseChange(index, "color", value || "#3b82f6")}
+                                    data={colorPalette.map((color, idx) => ({ 
+                                      value: color, 
+                                      label: `Color ${idx + 1}`,
+                                    }))}
+                                    size="sm"
+                                  />
+                                </SimpleGrid>
+                              </Paper>
+                            ))}
+
+                            <Group justify="center" mt="md">
+                              <Button
+                                onClick={handleSaveDaySchedule}
+                                leftSection={<IconCheck size={16} />}
+                                color="orange"
+                                size="md"
+                                radius="lg"
+                              >
+                                Save This Day&apos;s Schedule
+                              </Button>
+                            </Group>
+                          </Stack>
+                        </Card>
+                      )}
+
+                      {/* Saved Days Preview */}
+                      {currentSchedule.days.length > 0 && (
+                        <Card 
+                          shadow="sm" 
+                          padding="lg" 
+                          radius="lg" 
+                          withBorder
+                          className="border-green-100 bg-gradient-to-br from-green-50/30 to-emerald-50/30"
+                        >
+                          <Card.Section withBorder inheritPadding py="md" className="bg-gradient-to-r from-green-500 to-emerald-500">
+                            <Group justify="space-between">
+                              <Group>
+                                <ThemeIcon size={32} color="white" variant="transparent">
+                                  <IconCalendar size={20} />
+                                </ThemeIcon>
+                                <Text fw={700} size="lg" className="text-white">
+                                  Saved Days ({currentSchedule.days.length})
+                                </Text>
+                              </Group>
+                              <Badge color="white" variant="filled" size="lg" className="text-green-600">
+                                {Math.round(progress)}% Complete
+                              </Badge>
+                            </Group>
+                          </Card.Section>
+
+                          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mt="md">
+                            {currentSchedule.days.map((daySchedule: any) => (
+                              <Paper 
+                                key={daySchedule.id} 
+                                p="md" 
+                                withBorder 
+                                className="border-green-200 bg-gradient-to-br from-green-50/50 to-emerald-50/50"
+                                radius="lg"
+                              >
+                                <Group justify="space-between" mb="sm">
+                                  <Text fw={600} className="text-green-700 flex items-center gap-2">
+                                    <IconCalendar size={16} />
+                                    {daySchedule.day_of_week}
+                                  </Text>
+                                  <Group gap="xs">
+                                    <ActionIcon
+                                      color="blue"
+                                      variant="light"
+                                      size="sm"
+                                      onClick={() => {
+                                        dispatch(setDay(daySchedule.day_of_week));
+                                        dispatch(setCourses(daySchedule.courses));
+                                        dispatch(removeDaySchedule(daySchedule.id));
+                                      }}
+                                    >
+                                      <IconEdit size={14} />
+                                    </ActionIcon>
+                                    <ActionIcon
+                                      color="red"
+                                      variant="light"
+                                      size="sm"
+                                      onClick={() => dispatch(removeDaySchedule(daySchedule.id))}
+                                    >
+                                      <IconTrash size={14} />
+                                    </ActionIcon>
+                                  </Group>
+                                </Group>
+                                <Stack gap="xs">
+                                  {daySchedule.courses.map((course: any, idx: number) => (
+                                    <Group key={idx} justify="apart">
+                                      <Group gap="xs">
+                                        <Box
+                                          w={12}
+                                          h={12}
+                                          style={{ backgroundColor: course.color }}
+                                          className="rounded-full"
+                                        />
+                                        <Text size="sm" fw={500}>
+                                          {courses.find((c: any) => c.course_id === course.course_id)?.course_name || "Unknown Course"}
+                                        </Text>
+                                      </Group>
+                                      <Badge color="gray" variant="light" size="xs">
+                                        {course.startTime} - {course.endTime}
+                                      </Badge>
+                                    </Group>
+                                  ))}
+                                </Stack>
+                              </Paper>
+                            ))}
+                          </SimpleGrid>
+                        </Card>
+                      )}
+
+                      {/* Error Display */}
+                      {error && (
+                        <Alert 
+                          icon={<IconX size={20} />} 
+                          title="Error" 
+                          color="red" 
+                          variant="light"
+                          className="rounded-xl border-2 border-red-200"
+                        >
+                          <Text className="text-sm">{error}</Text>
+                        </Alert>
+                      )}
+                    </Stack>
+                  </Grid.Col>
+                </Grid>
+              )}
+            </Tabs.Panel>
+
+            {/* Rooms Tab - unchanged */}
+           {/* Rooms Tab */}
+            <Tabs.Panel value="rooms" pt="md">
+              <Stack gap="md">
+                {/* Room Filters */}
+                <Card 
+                  shadow="sm" 
+                  padding="lg" 
+                  radius="lg" 
+                  withBorder
+                  className="border-gray-200 bg-gray-50"
+                >
+                  <Group justify="space-between" mb="md">
+                    <Group gap="xs">
+                      <IconFilter size={20} className="text-gray-600" />
+                      <Text fw={500} size="lg">Filter Rooms</Text>
+                    </Group>
+                    <Group>
+                      {hasActiveFilters && (
+                        <Button 
+                          variant="subtle" 
+                          size="sm" 
+                          onClick={clearFilters}
+                          color="gray"
+                        >
+                          Clear All
+                        </Button>
+                      )}
+                      <Text size="sm" c="dimmed">
+                        {filteredRooms.length} of {rooms.length} rooms
+                      </Text>
+                    </Group>
+                  </Group>
+
+                  <Grid gutter="md">
+                    <Grid.Col span={{ base: 12, md: 4 }}>
+                      <Select
+                        label="Block"
+                        value={filters.block}
+                        onChange={(value) => updateFilter("block", value || "all")}
+                        data={[
+                          { value: "all", label: "All Blocks" },
+                          ...roomHierarchy.map((block: any) => ({
+                            value: block.block_id.toString(),
+                            label: `${block.block_name} (${block.block_code})`
+                          }))
+                        ]}
+                      />
+                    </Grid.Col>
+                    <Grid.Col span={{ base: 12, md: 4 }}>
+                      <Select
+                        label="Room Type"
+                        value={filters.roomType}
+                        onChange={(value) => updateFilter("roomType", value || "all")}
+                        data={[
+                          { value: "all", label: "All Types" },
+                          ...roomTypes.map(type => ({ value: type, label: type.charAt(0).toUpperCase() + type.slice(1) }))
+                        ]}
+                      />
+                    </Grid.Col>
+                    <Grid.Col span={{ base: 12, md: 4 }}>
+                      <TextInput
+                        label="Search Rooms"
+                        placeholder="Search by room number or name..."
+                        value={filters.searchTerm}
+                        onChange={(e) => updateFilter("searchTerm", e.target.value)}
+                        leftSection={<IconSearch size={16} />}
+                      />
+                    </Grid.Col>
+                  </Grid>
+                </Card>
+
+                {/* Rooms Grid */}
+                {filteredRooms.length === 0 ? (
+                  <div className="min-h-[200px] flex items-center justify-center">
+                    <div className="text-center">
+                      <ThemeIcon size={48} color="gray" variant="light" className="mb-4">
+                        <IconBuilding size={24} />
+                      </ThemeIcon>
+                      <Title order={4} c="dimmed" mb="xs">
+                        {hasActiveFilters ? "No rooms match your filters" : "No rooms found"}
+                      </Title>
+                      <Text c="dimmed" size="sm">
+                        {hasActiveFilters ? "Try adjusting your filter criteria" : "Rooms data is not available"}
+                      </Text>
+                      {hasActiveFilters && (
+                        <Button 
+                          variant="subtle" 
+                          size="sm" 
+                          onClick={clearFilters}
+                          mt="md"
+                        >
+                          Clear Filters
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
+                    {filteredRooms.map((room: any) => (
+                      <Paper 
+                        key={room.room_id} 
+                        p="lg" 
+                        withBorder 
+                        className="border-blue-200 bg-gradient-to-br from-blue-50/50 to-cyan-50/50 hover:shadow-lg transition-all duration-200"
+                        radius="lg"
+                      >
+                        <Group justify="space-between" mb="sm">
+                          <div>
+                            <Text fw={600} className="text-blue-700 text-lg">
+                              {room.room_number}
+                            </Text>
+                            {room.room_name && (
+                              <Text size="sm" c="dimmed">
+                                {room.room_name}
+                              </Text>
+                            )}
+                          </div>
+                          <Badge 
+                            color={room.is_available ? "green" : "red"}
+                            variant="light"
+                            size="sm"
+                          >
+                            {room.is_available ? "Available" : "Occupied"}
+                          </Badge>
+                        </Group>
+
+                        <Stack gap="xs" mb="md">
+                          <Group gap="xs">
+                            <IconBuildingCommunity size={14} className="text-gray-600" />
+                            <Text size="sm">{room.block_name} ({room.block_code})</Text>
+                          </Group>
+                          <Group gap="xs">
+                            <IconStairs size={14} className="text-gray-600" />
+                            <Text size="sm">Floor {room.floor_number}{room.floor_name ? ` (${room.floor_name})` : ''}</Text>
+                          </Group>
+                          <Group gap="xs">
+                            <IconDoor size={14} className="text-gray-600" />
+                            <Text size="sm">{room.room_type}</Text>
+                          </Group>
+                          {room.capacity && (
+                            <Group gap="xs">
+                              <IconUsers size={14} className="text-gray-600" />
+                              <Text size="sm">Capacity: {room.capacity} people</Text>
+                            </Group>
+                          )}
+                        </Stack>
+
+                        {room.facilities && room.facilities.length > 0 && (
+                          <div>
+                            <Text size="sm" fw={500} mb="xs">Facilities:</Text>
+                            <Group gap="xs" wrap="wrap">
+                              {room.facilities.map((facility: string, index: number) => (
+                                <Badge key={index} color="blue" variant="light" size="xs">
+                                  {facility}
+                                </Badge>
+                              ))}
+                            </Group>
+                          </div>
+                        )}
+                      </Paper>
+                    ))}
+                  </SimpleGrid>
+                )}
+              </Stack>
+            </Tabs.Panel>
+          </Tabs>
+        </Card>
+      </Stack>
+
+      {/* Auto Generate Modal */}
+      <Modal
+        opened={autoGenerateModalOpened}
+        onClose={closeAutoGenerateModal}
+        title="Auto Generate Schedule"
+        size="md"
+        centered
+        radius="lg"
+      >
+        <Stack gap="lg">
+          <Alert 
+            icon={<IconRobot size={20} />} 
+            title="Smart Schedule Generation"
+            color="blue"
+            variant="light"
+            className="rounded-xl border-2 border-blue-200"
+          >
+            <Text size="sm">
+              Our AI will analyze available resources and generate an optimal schedule based on:
+            </Text>
+            <Stack gap="xs" mt="xs">
+              <Group gap="xs">
+                <IconCheck size={14} className="text-green-600" />
+                <Text size="sm">Room availability and capacity</Text>
+              </Group>
+              <Group gap="xs">
+                <IconCheck size={14} className="text-green-600" />
+                <Text size="sm">Instructor preferences and availability</Text>
+              </Group>
+              <Group gap="xs">
+                <IconCheck size={14} className="text-green-600" />
+                <Text size="sm">Course requirements and constraints</Text>
+              </Group>
+              <Group gap="xs">
+                <IconCheck size={14} className="text-green-600" />
+                <Text size="sm">Optimal time slot distribution</Text>
+              </Group>
+            </Stack>
+          </Alert>
+
+          <Stack gap="md">
+            <Select
+              label="Batch Year"
+              placeholder="Select batch"
+              value={autoGenerateData.batch}
+              onChange={(value) => setAutoGenerateData(prev => ({ ...prev, batch: value || "" }))}
+              data={[
+                { value: "", label: "Select Batch" },
+                ...batchOptions.filter(b => b.value !== "all")
+              ]}
+              size="md"
+              leftSection={<IconSchool size={16} />}
+              disabled={batchLoading}
+            />
+
+            <Select
+              label="Semester"
+              placeholder="Select semester"
+              value={autoGenerateData.semester}
+              onChange={(value) => setAutoGenerateData(prev => ({ ...prev, semester: value || "" }))}
+              data={[
+                { value: "", label: "Select Semester" },
+                ...semesterOptions.filter(s => s.value !== "all")
+              ]}
+              size="md"
+              leftSection={<IconCalendar size={16} />}
+              disabled={semesterLoading}
+            />
+
+            <Select
+              label="Section"
+              placeholder="Select section"
+              value={autoGenerateData.section}
+              onChange={(value) => setAutoGenerateData(prev => ({ ...prev, section: value || "" }))}
+              data={sectionOptions}
+              size="md"
+              leftSection={<IconSection size={16} />}
+            />
+          </Stack>
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={closeAutoGenerateModal}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAutoGenerate}
+              loading={isAutoGenerating}
+              leftSection={<IconRobot size={16} />}
+              color="green"
+              disabled={!autoGenerateData.batch || !autoGenerateData.semester || !autoGenerateData.section}
+            >
+              {isAutoGenerating ? "Generating..." : "Generate Schedule"}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+  {/* Delete Confirmation Modal */}
+      <Modal
+        opened={deleteModalOpened}
+        onClose={closeDeleteModal}
+        title="Delete Schedule"
+        centered
+        size="sm"
+        radius="lg"
+      >
+        <Stack>
+          <Text>
+            Are you sure you want to delete this schedule? This action cannot be undone.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={closeDeleteModal}>
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              onClick={() => scheduleToDelete && handleDeleteSchedule(scheduleToDelete)}
+              loading={submitting}
+              leftSection={<IconTrash size={16} />}
+            >
+              Delete Schedule
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    
+
+      <Modal
+        opened={publishModalOpened}
+        onClose={closePublishModal}
+        title={scheduleToPublish?.status === "published" ? "Unpublish Schedule" : "Publish Schedule"}
+        centered
+        size="md"
+        radius="lg"
+      >
+        {/* ... existing publish modal content ... */}
+      </Modal>
+
+<Modal
+  opened={conflictModalOpen}
+  onClose={() => setConflictModalOpen(false)}
+  title={
+    <Group>
+      <IconAlertTriangle size={24} className="text-orange-600" />
+      <Text fw={600}>Schedule Generation Conflicts</Text>
+    </Group>
+  }
+  size="xl"
+  centered
+  radius="lg"
+  scrollAreaComponent={ScrollArea.Autosize}
+>
+  <Stack gap="md">
+    {/* Summary Card */}
+    <Paper p="lg" withBorder className="border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50" radius="lg">
+      <Group justify="space-between">
+        <div>
+          <Text fw={600} size="lg" className="text-orange-700">
+            Generation Summary
+          </Text>
+          <Text size="sm" c="dimmed">
+            {conflictsData.length} conflicts prevented complete scheduling
+          </Text>
+        </div>
+        <Badge color="orange" variant="filled" size="lg">
+          {conflictsData.length} Issues
+        </Badge>
+      </Group>
+    </Paper>
+
+    {/* Detailed Conflicts Table */}
+    <Card withBorder shadow="sm" radius="lg">
+      <Card.Section withBorder inheritPadding py="md">
+        <Group justify="space-between">
+          <Text fw={600}>Detailed Conflict Report</Text>
+          <Badge color="red" variant="light">
+            Requires Manual Intervention
+          </Badge>
+        </Group>
+      </Card.Section>
+      
+      <Table.ScrollContainer minWidth={600} mt="md">
+        <Table verticalSpacing="sm">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Course ID</Table.Th>
+              <Table.Th>Session Type</Table.Th>
+              <Table.Th>Conflict Reason</Table.Th>
+              <Table.Th>Time</Table.Th>
+              <Table.Th>Suggested Fix</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {conflictsData.map((conflict, idx) => (
+              <Table.Tr key={idx} className="hover:bg-orange-50/50">
+                <Table.Td>
+                  <Group gap="xs">
+                    <Badge color="blue" variant="light">
+                      {conflict.course_id || 'Unknown'}
+                    </Badge>
+                    {conflict.course_name && (
+                      <Text size="xs" c="dimmed">
+                        {conflict.course_name}
+                      </Text>
+                    )}
+                  </Group>
+                </Table.Td>
+                <Table.Td>
+                  <Badge 
+                    color={conflict.type === 'LAB' ? 'red' : 'blue'} 
+                    variant="light"
+                  >
+                    {conflict.type || 'Unknown'}
+                    {conflict.type === 'LAB' && ' 🧪'}
+                    {conflict.type === 'LEC' && ' 📚'}
+                  </Badge>
+                </Table.Td>
+                <Table.Td>
+                  <Group gap={4}>
+                    <IconAlertCircle size={14} className="text-red-600" />
+                    <Text size="sm" fw={500}>
+                      {conflict.reason || 'Unknown conflict'}
+                    </Text>
+                  </Group>
+                  {conflict.details && (
+                    <Text size="xs" c="dimmed" mt={2}>
+                      {conflict.details}
+                    </Text>
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  {conflict.timestamp ? (
+                    <Text size="xs">
+                      {new Date(conflict.timestamp).toLocaleTimeString()}
+                    </Text>
+                  ) : (
+                    <Text size="xs" c="dimmed">N/A</Text>
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  <Text size="xs">
+                    {getConflictSolution(conflict)}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+    </Card>
+
+    {/* Common Issues Section */}
+    <Accordion variant="separated" radius="lg">
+      <Accordion.Item value="common-issues">
+        <Accordion.Control icon={<IconBulb size={16} />}>
+          <Text fw={500}>Common Issues & Solutions</Text>
+        </Accordion.Control>
+        <Accordion.Panel>
+          <SimpleGrid cols={2} spacing="md">
+            <Paper p="md" withBorder className="border-blue-200" radius="md">
+              <Group gap="xs" mb={4}>
+                <IconUsers size={16} className="text-blue-600" />
+                <Text fw={500} size="sm">Instructor Conflicts</Text>
+              </Group>
+              <Text size="xs" c="dimmed">
+                • Check instructor availability for the section
+                • Assign backup instructors
+                • Adjust maximum load per instructor
+              </Text>
+            </Paper>
+            
+            <Paper p="md" withBorder className="border-red-200" radius="md">
+              <Group gap="xs" mb={4}>
+                <IconBuilding size={16} className="text-red-600" />
+                <Text fw={500} size="sm">Room Conflicts</Text>
+              </Group>
+              <Text size="xs" c="dimmed">
+                • Verify room assignments per section
+                • Check room type (LAB vs Classroom)
+                • Ensure room availability in time slots
+              </Text>
+            </Paper>
+          </SimpleGrid>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
+
+    {/* Action Buttons */}
+    <Group justify="space-between" mt="md">
+      <Group>
+        <Button
+          color="teal"
+          variant="filled"
+          leftSection={<IconRefresh size={16} />}
+          onClick={handleRegenerateConflicts}
+          loading={isRegenerating}
+        >
+          🔄 Auto-Fit Conflicted to Free Slots
+        </Button>
+        <Button
+          color="indigo"
+          variant="light"
+          leftSection={<IconSparkles size={16} />}
+          onClick={handleAskAiResolveConflicts}
+          loading={aiConflictLoading}
+        >
+          🤖 Ask AI
+        </Button>
+      </Group>
+
+      <Group>
+        <Button
+          variant="light"
+          onClick={() => setConflictModalOpen(false)}
+        >
+          Close
+        </Button>
+        <Button
+          color="blue"
+          leftSection={<IconEdit size={16} />}
+          onClick={async () => {
+          setConflictModalOpen(false);
+          setActiveTab("create");
+          setCreationMode("manual");
+          
+          // አዲስ የተፈጠረውን ሼዱል ለማምጣት ጥቂት ቆይ
+          if (lastGeneratedScheduleId) {
+            try {
+              // ሼዱሎችን እንደገና አምጣ
+              await dispatch(fetchSchedules()).unwrap();
+              
+              // አዲስ የመጡትን ሼዱሎች ፈልግ
+             
+              const generatedSchedule = schedules.find(s => s.id === lastGeneratedScheduleId);
+              
+              if (generatedSchedule) {
+                // ለማስተካከል ክፈት
+                handleEditSchedule(generatedSchedule);
+                
+                notifications.show({
+                  title: "✅ Ready to Edit",
+                  message: "Partially generated schedule loaded for manual editing",
+                  color: "blue"
+                });
+              } else {
+                notifications.show({
+                  title: "⚠️ Not Found",
+                  message: "Generated schedule not found. Please try manual creation.",
+                  color: "yellow"
+                });
+              }
+            } catch (error) {
+              console.error("Error loading generated schedule:", error);
+              notifications.show({
+                title: "❌ Error",
+                message: "Failed to load generated schedule",
+                color: "red"
+              });
+            }
+          } else {
+            notifications.show({
+              title: "ℹ️ Manual Creation",
+              message: "Starting manual schedule creation",
+              color: "blue"
+            });
+          }
+        }}
+      >
+        Edit Schedule Manually
+      </Button>
+    </Group>
+    </Group>
+  </Stack>
+</Modal>
+      <Modal
+        opened={roomModalOpened}
+        onClose={closeRoomModal}
+        title="Room Hierarchy"
+        size="xl"
+        centered
+        radius="lg"
+      >
+        {/* ... existing room modal content ... */}
+      </Modal>
+
+      {/* 🤖 AI Schedule Analysis & Conflict Resolution Modal */}
+      <AiScheduleModal
+        opened={aiModalOpened}
+        onClose={() => setAiModalOpened(false)}
+        scheduleId={aiActiveSchedule?.id}
+        scheduleInfo={
+          aiActiveSchedule
+            ? {
+                department: user?.department_name || `Dept #${user?.department_id || ""}`,
+                batch: aiActiveSchedule.batch,
+                semester: aiActiveSchedule.semester,
+                section: aiActiveSchedule.section,
+                status: aiActiveSchedule.status,
+              }
+            : {
+                department: user?.department_name,
+                batch: autoGenerateData.batch,
+                semester: autoGenerateData.semester,
+                section: autoGenerateData.section,
+              }
+        }
+        mode={aiModalMode}
+        aiData={aiActiveSchedule ? aiSuggestions[String(aiActiveSchedule.id)] : null}
+        conflictPlan={aiConflictPlan}
+        loading={aiModalMode === "conflicts" ? aiConflictLoading : aiLoading}
+        error={aiModalMode === "conflicts" ? aiConflictError : aiError}
+        onRefresh={() => {
+          if (aiModalMode === "conflicts") {
+            handleAskAiResolveConflicts();
+          } else if (aiActiveSchedule) {
+            dispatch(fetchAiScheduleSuggestion(aiActiveSchedule.id));
+          }
+        }}
+      />
+    </Container>
+  );
+};
+
+export default ScheduleDashboard;
