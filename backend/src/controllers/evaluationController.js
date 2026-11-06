@@ -928,6 +928,25 @@ const getDepartmentEvaluationSections = async (req, res) => {
       filtered = filtered.filter((r) => r.overall_status === status);
     }
 
+    // Deduplicate: if same course+section+batch+semester appears multiple times
+    // (e.g. assigned via both course_section_instructor_assign and day_courses),
+    // keep the row with the most evaluations (or the first one).
+    const seen = new Map();
+    filtered = filtered.filter((r) => {
+      const key = `${r.course_id}-${r.section}-${r.batch_id}-${r.semester_id}-${r.department_id}`;
+      if (seen.has(key)) {
+        // Keep the one with more evaluated students
+        const existing = seen.get(key);
+        if (Number(r.evaluated_count) > Number(existing.evaluated_count)) {
+          seen.set(key, r);
+          return true; // Replace — handled by splice below
+        }
+        return false;
+      }
+      seen.set(key, r);
+      return true;
+    });
+
     // Compute department summary stats
     const totalSections = filtered.length;
     const submittedCount = filtered.filter((r) => r.overall_status === "submitted").length;
@@ -1061,6 +1080,81 @@ const updateDepartmentEvaluationStatus = async (req, res) => {
   }
 };
 
+// 10. Department Head: Get all assigned courses & sections within their department (for grading directly)
+const getDeptHeadCourses = async (req, res) => {
+  try {
+    const departmentId = req.user?.department_id || req.query.department_id;
+    if (!departmentId) {
+      return res.status(400).json({ success: false, error: "Department ID is required" });
+    }
+
+    const query = `
+      WITH dept_courses AS (
+        SELECT 
+          c.course_id,
+          c.course_code,
+          c.course_name,
+          c.credit_hour,
+          csia.section,
+          cb.batch as batch_id,
+          b.batch_year,
+          cb.semester_id,
+          sem.semester as semester_name,
+          cb.department_id,
+          d.department_name,
+          u.id as instructor_id,
+          u.full_name as instructor_name
+        FROM course_section_instructor_assign csia
+        JOIN course_batch cb ON csia.course_batch_id = cb.id
+        JOIN course c ON cb.course_id = c.course_id
+        JOIN departments d ON cb.department_id = d.department_id
+        LEFT JOIN batches b ON cb.batch = b.batch_id
+        LEFT JOIN semesters sem ON cb.semester_id = sem.id
+        LEFT JOIN users u ON csia.instructor_id = u.id
+        WHERE cb.department_id = $1
+
+        UNION
+
+        SELECT 
+          c.course_id,
+          c.course_code,
+          c.course_name,
+          c.credit_hour,
+          s.section,
+          s.batch_id,
+          ba.batch_year,
+          s.semester_id,
+          sem.semester as semester_name,
+          s.department_id,
+          d.department_name,
+          u.id as instructor_id,
+          u.full_name as instructor_name
+        FROM day_courses dc
+        JOIN day_schedules ds ON dc.day_schedule_id = ds.id
+        JOIN schedules s ON ds.schedule_id = s.id
+        JOIN course c ON dc.course_id = c.course_id
+        JOIN departments d ON s.department_id = d.department_id
+        LEFT JOIN batches ba ON s.batch_id = ba.batch_id
+        LEFT JOIN semesters sem ON s.semester_id = sem.id
+        LEFT JOIN users u ON dc.instructor_id = u.id
+        WHERE s.department_id = $1
+      )
+      SELECT DISTINCT
+        course_id, course_code, course_name, credit_hour,
+        section, batch_id, batch_year, semester_id, semester_name,
+        department_id, department_name, instructor_id, instructor_name
+      FROM dept_courses
+      ORDER BY course_code, section;
+    `;
+
+    const { rows } = await pool.query(query, [Number(departmentId)]);
+    res.json({ success: true, courses: rows });
+  } catch (err) {
+    console.error("getDeptHeadCourses error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch department courses" });
+  }
+};
+
 module.exports = {
   getInstructorCourses,
   getCourseEvaluations,
@@ -1071,5 +1165,6 @@ module.exports = {
   exportEvaluations,
   getDepartmentEvaluationSections,
   updateDepartmentEvaluationStatus,
+  getDeptHeadCourses,
   calculateGrade,
 };

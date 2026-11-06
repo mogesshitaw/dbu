@@ -123,7 +123,7 @@ const BatchSemesterSelector: React.FC = () => {
       semester: filters.semester,
       section: filters.section,
     });
-  }, [filters, form]);
+  }, [filters]);
 
   // Handle form field changes
   const handleFieldChange = (field: keyof typeof filters, value: string) => {

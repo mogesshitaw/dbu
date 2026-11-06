@@ -85,7 +85,7 @@ VALUES (
 );
 -- Insert More Users
 INSERT INTO users (full_name, email, password_hash, role, id_number, status, department_id) VALUES
-('John Doe','john@example.com','$2b$10$Ad0CS3PZK3Jg9KZ60P8rhOdE6WL1Osv213MnCxaAxN.VLOL1yfVwy','instructor','I1001','Active',1),
+('Abrham Sharew','john@example.com','$2b$10$Ad0CS3PZK3Jg9KZ60P8rhOdE6WL1Osv213MnCxaAxN.VLOL1yfVwy','instructor','I1001','Active',1),
 ('Sara Thomas','sara@example.com','$2b$10$Ad0CS3PZK3Jg9KZ60P8rhOdE6WL1Osv213MnCxaAxN.VLOL1yfVwy','instructor','I1002','Active',2),
 ('Michael White','mike@example.com','$2b$10$Ad0CS3PZK3Jg9KZ60P8rhOdE6WL1Osv213MnCxaAxN.VLOL1yfVwy','instructor','S2001','Active',1),
 ('Lily Hagos','lily@example.com','$2b$10$Ad0CS3PZK3Jg9KZ60P8rhOdE6WL1Osv213MnCxaAxN.VLOL1yfVwy','instructor','S2002','Active',2),

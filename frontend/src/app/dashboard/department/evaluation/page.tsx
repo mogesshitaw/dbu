@@ -27,6 +27,7 @@ import {
   RingProgress,
   Avatar,
   SimpleGrid,
+  Tabs,
 } from "@mantine/core";
 import {
   IconCheck,
@@ -52,9 +53,12 @@ import {
   IconCircleX,
   IconShieldCheck,
   IconBell,
+  IconEdit,
+  IconClipboardList,
 } from "@tabler/icons-react";
 import { Found } from "@/app/auth/auth";
 import * as XLSX from "xlsx";
+import { StudentEvaluationSection } from "../../instructor/components/StudentEvaluationSection";
 
 // Ethiopian University Grading Scale
 export const calculateGrade = (total: number) => {
@@ -130,6 +134,7 @@ export default function DepartmentEvaluationPage() {
 
   // State
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<string>("review");
   const [sections, setSections] = useState<SectionSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [stats, setStats] = useState({
@@ -504,6 +509,33 @@ export default function DepartmentEvaluationPage() {
         )}
       </div>
 
+      {/* Main Tabs: Review & Approve vs Grade Students directly */}
+      <Tabs value={activeTab} onChange={(val) => setActiveTab(val || "review")} radius="lg">
+        <Tabs.List className="bg-white p-1 rounded-xl shadow-sm border border-gray-200">
+          <Tabs.Tab
+            value="review"
+            leftSection={<IconClipboardList size={18} />}
+            className="font-bold text-sm"
+          >
+            Review &amp; Manage Submissions
+            {stats.submitted > 0 && (
+              <Badge size="xs" color="yellow" variant="filled" className="ml-2">
+                {stats.submitted} Pending
+              </Badge>
+            )}
+          </Tabs.Tab>
+          <Tabs.Tab
+            value="grade"
+            leftSection={<IconEdit size={18} />}
+            className="font-bold text-sm"
+          >
+            Evaluate Department Students Directly
+          </Tabs.Tab>
+        </Tabs.List>
+
+        {/* Tab 1: Review & Manage (existing portal) */}
+        <Tabs.Panel value="review" pt="md" className="space-y-6">
+
       {/* Metric KPI Cards */}
       <SimpleGrid cols={{ base: 1, sm: 2, md: 5 }} spacing="md">
         {/* Total Sections */}
@@ -736,7 +768,7 @@ export default function DepartmentEvaluationPage() {
                       : 0;
 
                   return (
-                    <Table.Tr key={`${sec.course_id}-${sec.section}-${sec.batch_id}`}>
+                    <Table.Tr key={`${sec.course_id}-${sec.section}-${sec.batch_id}-${sec.semester_id}-${sec.department_id}`}>
                       {/* Course */}
                       <Table.Td>
                         <Group gap="sm">
@@ -1327,6 +1359,13 @@ export default function DepartmentEvaluationPage() {
           </Group>
         </Stack>
       </Modal>
+        </Tabs.Panel>
+
+        {/* Tab 2: Evaluate Department Students Directly */}
+        <Tabs.Panel value="grade" pt="md">
+          <StudentEvaluationSection isDeptHead={true} />
+        </Tabs.Panel>
+      </Tabs>
     </div>
   );
 }

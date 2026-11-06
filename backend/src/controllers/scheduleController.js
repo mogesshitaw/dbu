@@ -2042,15 +2042,23 @@ Analyse the following weekly class schedule:
 
 ${scheduleText}
 
-Provide a structured analysis with:
-1. **Schedule Quality Score** (1–10) with brief justification.
-2. **Issues Detected** — list concrete problems (instructor overload, back-to-back labs, room underutilisation, long gaps, etc.).
-3. **Optimisation Suggestions** — specific, actionable improvements.
-4. **Ethiopian Context** — respect prayer times (06:00–07:30) and DBU working hours (08:00–17:00). Note any violations.
+Provide a comprehensive, detailed, and structured analysis for the Department Head:
+1. **Schedule Quality Score (1–10)**:
+   - Provide a numerical score from 1 to 10.
+   - Give an in-depth justification detailing strengths, structural bottlenecks, and feasibility.
+2. **Issues Detected & Risk Analysis**:
+   - Instructor Fatigue & Overload: Highlight instructors with >3 sessions/day or heavy back-to-back lectures.
+   - Student Learning Experience: Identify long gaps/dead hours between classes or exhausting consecutive lab blocks.
+   - Facility & Room Allocation: Verify if practical lab sessions are correctly placed in computer/hardware labs vs general lecture halls, and check room capacity matching.
+3. **Actionable Optimisation Suggestions**:
+   - Provide clear, specific improvements naming exact courses, recommended days, and rooms to relocate.
+4. **Ethiopian Higher Education Context (DBU Guidelines)**:
+   - Check strict compliance with DBU working hours (08:00 – 17:00).
+   - Ensure the university lunch break (12:00 – 13:30) and morning prayer window (06:00 – 07:30) are free of classes.
 
-Be concise and practical. Use bullet points.`;
+Provide full, thorough explanations with detailed bullet points so the Department Head has clear, actionable guidance.`;
 
-    const geminiResult = await callGemini(apiKey, prompt, 1400);
+    const geminiResult = await callGemini(apiKey, prompt, 4096);
 
     if (!geminiResult) {
       return res.status(502).json({ success: false, message: "AI service returned an error. Check your GEMINI_API_KEY." });
@@ -2154,9 +2162,9 @@ Provide a structured, actionable Conflict Resolution Plan for the Department Hea
 3. **Alternative Workarounds** — If room or instructor capacity is tight, recommend practical adjustments (e.g., swapping with another section, pairing lecture hours, or scheduling on Friday/Saturday).
 4. **Immediate Next Step** — 2-3 specific edits to make in the schedule builder.
 
-Be practical, direct, and use clean markdown bullet points.`;
+Provide full, thorough explanations and detailed step-by-step instructions so the Department Head can resolve every clash without guesswork.`;
 
-    const geminiResult = await callGemini(apiKey, prompt, 1500);
+    const geminiResult = await callGemini(apiKey, prompt, 4096);
     if (!geminiResult) {
       return res.status(502).json({
         success: false,
@@ -2179,8 +2187,8 @@ Be practical, direct, and use clean markdown bullet points.`;
 };
 
 // Reusable Gemini API helper with automatic fallback across models
-const callGemini = async (apiKey, prompt, maxTokens = 1500) => {
-  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"];
+const callGemini = async (apiKey, prompt, maxTokens = 4096) => {
+  const models = ["gemini-2.5-flash", "gemini-2.5-pro"];
   for (const model of models) {
     try {
       const res = await fetch(
@@ -2190,7 +2198,13 @@ const callGemini = async (apiKey, prompt, maxTokens = 1500) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.35, maxOutputTokens: maxTokens }
+            generationConfig: {
+              temperature: 0.35,
+              maxOutputTokens: maxTokens,
+              thinkingConfig: {
+                thinkingBudget: 0
+              }
+            }
           })
         }
       );

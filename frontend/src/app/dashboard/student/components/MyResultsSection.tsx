@@ -19,6 +19,7 @@ import {
   Tooltip,
   Modal,
   Button,
+  Select,
 } from "@mantine/core";
 import {
   IconAlertCircle,
@@ -36,6 +37,8 @@ import {
   IconMoodSmile,
   IconMoodSad,
   IconEye,
+  IconFilter,
+  IconHistory,
 } from "@tabler/icons-react";
 import { Found } from "@/app/auth/auth";
 
@@ -49,6 +52,7 @@ interface ResultItem {
   department_name: string;
   batch_year: string;
   semester_name: string;
+  academic_year_name?: string;
   instructor_name: string;
   continuous_assessment: number;
   mid_exam: number;
@@ -93,6 +97,8 @@ const MyResultsSection: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedResult, setSelectedResult] = useState<ResultItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [filterAcademicYear, setFilterAcademicYear] = useState<string>("ALL");
+  const [filterSemester, setFilterSemester] = useState<string>("ALL");
 
   // Load user session
   useEffect(() => {
@@ -136,7 +142,49 @@ const MyResultsSection: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
-  // Overall GPA-like summary
+  // Unique filter options for academic year and semester across all history
+  const academicYearOptions = useMemo(() => {
+    const years = Array.from(
+      new Set(results.map((r) => r.academic_year_name).filter(Boolean))
+    );
+    return [{ value: "ALL", label: "All Academic Years" }, ...years.map((y) => ({ value: y as string, label: y as string }))];
+  }, [results]);
+
+  const semesterOptions = useMemo(() => {
+    const sems = Array.from(
+      new Set(
+        results
+          .filter((r) => filterAcademicYear === "ALL" || r.academic_year_name === filterAcademicYear)
+          .map((r) => r.semester_name)
+          .filter(Boolean)
+      )
+    );
+    return [{ value: "ALL", label: "All Semesters" }, ...sems.map((s) => ({ value: s as string, label: s as string }))];
+  }, [results, filterAcademicYear]);
+
+  // Filtered results
+  const filteredResults = useMemo(() => {
+    return results.filter((r) => {
+      const matchYear = filterAcademicYear === "ALL" || r.academic_year_name === filterAcademicYear;
+      const matchSem = filterSemester === "ALL" || r.semester_name === filterSemester;
+      return matchYear && matchSem;
+    });
+  }, [results, filterAcademicYear, filterSemester]);
+
+  // Group filtered results by Academic Year & Semester for historical transcript viewing
+  const groupedResults = useMemo(() => {
+    const groups: { [key: string]: { label: string; items: ResultItem[] } } = {};
+    filteredResults.forEach((r) => {
+      const groupKey = `${r.academic_year_name || "General"} — ${r.semester_name || "All Terms"}`;
+      if (!groups[groupKey]) {
+        groups[groupKey] = { label: groupKey, items: [] };
+      }
+      groups[groupKey].items.push(r);
+    });
+    return Object.values(groups);
+  }, [filteredResults]);
+
+  // Overall GPA-like summary (cumulative across all permanent results)
   const summary = useMemo(() => {
     if (results.length === 0) return null;
     const totalCredits = results.reduce((a, r) => a + Number(r.credit_hour || 3), 0);
@@ -310,163 +358,237 @@ const MyResultsSection: React.FC = () => {
           </div>
         </Card>
       ) : (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Text fw={700} size="lg" className="text-gray-800">
-              📋 Released Results ({results.length})
-            </Text>
-            <Text size="xs" c="dimmed">Sorted by most recently released</Text>
-          </div>
-
-          {results.map((result) => {
-            const status = gradeStatus(result.total_score);
-            const StatusIcon = status.icon;
-            const gc = gradeColor(result.letter_grade);
-
-            return (
-              <Card
-                key={result.id}
-                shadow="sm"
-                radius="xl"
-                p={0}
-                withBorder
-                className="overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer group"
-                onClick={() => { setSelectedResult(result); setDetailOpen(true); }}
-              >
-                {/* Top accent bar */}
-                <div className={`h-1.5 w-full ${result.total_score >= 50 ? "bg-gradient-to-r from-teal-400 to-green-500" : "bg-gradient-to-r from-red-400 to-rose-500"}`} />
-
-                <div className="p-5">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    {/* Course Info */}
-                    <div className="flex items-start gap-4 flex-1">
-                      <ThemeIcon
-                        size={52}
-                        radius="xl"
-                        color={gc}
-                        variant="light"
-                        className="flex-shrink-0 mt-1"
-                      >
-                        <IconSchool size={28} />
-                      </ThemeIcon>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <Badge size="sm" color="blue" variant="light" className="font-mono font-bold">
-                            {result.course_code}
-                          </Badge>
-                          <Badge size="xs" color="gray" variant="outline">
-                            Sec {result.section}
-                          </Badge>
-                          {result.semester_name && (
-                            <Badge size="xs" color="indigo" variant="light">
-                              {result.semester_name}
-                            </Badge>
-                          )}
-                          <Badge size="xs" color={status.color} variant="filled" className="font-bold">
-                            <Group gap={4}>
-                              <StatusIcon size={10} />
-                              {status.label}
-                            </Group>
-                          </Badge>
-                        </div>
-                        <Text fw={700} size="md" className="text-gray-900 leading-tight">
-                          {result.course_name}
-                        </Text>
-                        <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <IconUser size={11} />
-                            {result.instructor_name || "Instructor"}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <IconCalendar size={11} />
-                            Released: {formatDate(result.result_published_at)}
-                          </span>
-                          {result.credit_hour && (
-                            <span>{result.credit_hour} Cr. Hr</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Score & Grade */}
-                    <div className="flex items-center gap-4 md:gap-6 flex-shrink-0">
-                      {/* Score breakdown mini */}
-                      <div className="hidden sm:flex flex-col items-end gap-0.5">
-                        <Text size="xs" c="dimmed">CA + Mid + Final</Text>
-                        <Text size="sm" fw={600} className="font-mono text-gray-700">
-                          {Number(result.continuous_assessment).toFixed(1)}&nbsp;+&nbsp;
-                          {Number(result.mid_exam).toFixed(1)}&nbsp;+&nbsp;
-                          {Number(result.final_exam).toFixed(1)}
-                        </Text>
-                      </div>
-
-                      {/* Total */}
-                      <div className="text-center">
-                        <Text size="xs" c="dimmed" fw={500}>Total</Text>
-                        <div className={`text-2xl font-black font-mono ${result.total_score >= 50 ? "text-teal-600" : "text-red-500"}`}>
-                          {Number(result.total_score).toFixed(1)}
-                        </div>
-                        <Text size="xs" c="dimmed">/100</Text>
-                      </div>
-
-                      <Divider orientation="vertical" />
-
-                      {/* Grade */}
-                      <div className="text-center">
-                        <Text size="xs" c="dimmed" fw={500}>Grade</Text>
-                        <Badge
-                          size="xl"
-                          radius="md"
-                          color={gc}
-                          variant="filled"
-                          className="text-xl font-black px-3 py-1 mt-0.5"
-                        >
-                          {result.letter_grade}
-                        </Badge>
-                        <Text size="xs" c="dimmed" className="mt-0.5">{Number(result.grade_point).toFixed(2)} pts</Text>
-                      </div>
-
-                      {/* View detail */}
-                      <Tooltip label="View full details" withArrow>
-                        <ActionIcon
-                          variant="light"
-                          color="blue"
-                          size="lg"
-                          radius="md"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <IconEye size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </div>
-                  </div>
-
-                  {/* Score progress bars */}
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    {[
-                      { label: "Continuous Assessment", value: result.continuous_assessment, color: "blue" },
-                      { label: "Mid Exam", value: result.mid_exam, color: "violet" },
-                      { label: "Final Exam", value: result.final_exam, color: "indigo" },
-                    ].map((item) => (
-                      <div key={item.label}>
-                        <Group justify="space-between" mb={3}>
-                          <Text size="xs" c="dimmed">{item.label}</Text>
-                          <Text size="xs" fw={600}>{Number(item.value).toFixed(1)}</Text>
-                        </Group>
-                        <Progress value={Number(item.value)} color={item.color} size="xs" radius="xl" />
-                      </div>
-                    ))}
-                  </div>
-
-                  {result.feedback && (
-                    <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
-                      <strong>Instructor Remarks:</strong> {result.feedback}
-                    </div>
-                  )}
+        <div className="space-y-6">
+          {/* History filter bar */}
+          <Card shadow="sm" radius="lg" p="md" withBorder className="bg-white">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <Group gap="xs">
+                <ThemeIcon size={32} radius="md" color="indigo" variant="light">
+                  <IconHistory size={18} />
+                </ThemeIcon>
+                <div>
+                  <Text size="sm" fw={700} className="text-gray-900">
+                    Academic Result History (Permanent Record)
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    Your complete grade transcript across all batches and semesters
+                  </Text>
                 </div>
-              </Card>
-            );
-          })}
+              </Group>
+
+              <Group gap="xs" className="w-full sm:w-auto">
+                {academicYearOptions.length > 2 && (
+                  <Select
+                    placeholder="Academic Year"
+                    value={filterAcademicYear}
+                    onChange={(val) => setFilterAcademicYear(val || "ALL")}
+                    data={academicYearOptions}
+                    size="xs"
+                    radius="md"
+                    className="w-44"
+                  />
+                )}
+                {semesterOptions.length > 2 && (
+                  <Select
+                    placeholder="Semester"
+                    value={filterSemester}
+                    onChange={(val) => setFilterSemester(val || "ALL")}
+                    data={semesterOptions}
+                    size="xs"
+                    radius="md"
+                    className="w-36"
+                  />
+                )}
+                {(filterAcademicYear !== "ALL" || filterSemester !== "ALL") && (
+                  <Button
+                    variant="subtle"
+                    color="gray"
+                    size="xs"
+                    onClick={() => {
+                      setFilterAcademicYear("ALL");
+                      setFilterSemester("ALL");
+                    }}
+                  >
+                    Reset
+                  </Button>
+                )}
+              </Group>
+            </div>
+          </Card>
+
+          {/* Grouped results by Academic Year / Semester */}
+          {groupedResults.map((group) => (
+            <div key={group.label} className="space-y-3">
+              <div className="flex items-center gap-2 border-b pb-2 border-gray-200">
+                <ThemeIcon size={24} radius="xl" color="blue" variant="filled">
+                  <IconCalendar size={14} />
+                </ThemeIcon>
+                <Text fw={700} size="sm" className="text-gray-800">
+                  {group.label}
+                </Text>
+                <Badge size="xs" color="gray" variant="light">
+                  {group.items.length} {group.items.length === 1 ? "course" : "courses"}
+                </Badge>
+              </div>
+
+              <div className="space-y-3">
+                {group.items.map((result) => {
+                  const status = gradeStatus(result.total_score);
+                  const StatusIcon = status.icon;
+                  const gc = gradeColor(result.letter_grade);
+
+                  return (
+                    <Card
+                      key={result.id}
+                      shadow="sm"
+                      radius="xl"
+                      p={0}
+                      withBorder
+                      className="overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer group"
+                      onClick={() => { setSelectedResult(result); setDetailOpen(true); }}
+                    >
+                      {/* Top accent bar */}
+                      <div className={`h-1.5 w-full ${result.total_score >= 50 ? "bg-gradient-to-r from-teal-400 to-green-500" : "bg-gradient-to-r from-red-400 to-rose-500"}`} />
+
+                      <div className="p-5">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          {/* Course Info */}
+                          <div className="flex items-start gap-4 flex-1">
+                            <ThemeIcon
+                              size={52}
+                              radius="xl"
+                              color={gc}
+                              variant="light"
+                              className="flex-shrink-0 mt-1"
+                            >
+                              <IconSchool size={28} />
+                            </ThemeIcon>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <Badge size="sm" color="blue" variant="light" className="font-mono font-bold">
+                                  {result.course_code}
+                                </Badge>
+                                <Badge size="xs" color="gray" variant="outline">
+                                  Sec {result.section}
+                                </Badge>
+                                {result.semester_name && (
+                                  <Badge size="xs" color="indigo" variant="light">
+                                    {result.semester_name}
+                                  </Badge>
+                                )}
+                                {result.batch_year && (
+                                  <Badge size="xs" color="violet" variant="light">
+                                    {result.batch_year}
+                                  </Badge>
+                                )}
+                                <Badge size="xs" color={status.color} variant="filled" className="font-bold">
+                                  <Group gap={4}>
+                                    <StatusIcon size={10} />
+                                    {status.label}
+                                  </Group>
+                                </Badge>
+                              </div>
+                              <Text fw={700} size="md" className="text-gray-900 leading-tight">
+                                {result.course_name}
+                              </Text>
+                              <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-500">
+                                <span className="flex items-center gap-1">
+                                  <IconUser size={11} />
+                                  {result.instructor_name || "Instructor"}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <IconCalendar size={11} />
+                                  Released: {formatDate(result.result_published_at)}
+                                </span>
+                                {result.credit_hour && (
+                                  <span>{result.credit_hour} Cr. Hr</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Score & Grade */}
+                          <div className="flex items-center gap-4 md:gap-6 flex-shrink-0">
+                            {/* Score breakdown mini */}
+                            <div className="hidden sm:flex flex-col items-end gap-0.5">
+                              <Text size="xs" c="dimmed">CA + Mid + Final</Text>
+                              <Text size="sm" fw={600} className="font-mono text-gray-700">
+                                {Number(result.continuous_assessment).toFixed(1)}&nbsp;+&nbsp;
+                                {Number(result.mid_exam).toFixed(1)}&nbsp;+&nbsp;
+                                {Number(result.final_exam).toFixed(1)}
+                              </Text>
+                            </div>
+
+                            {/* Total */}
+                            <div className="text-center">
+                              <Text size="xs" c="dimmed" fw={500}>Total</Text>
+                              <div className={`text-2xl font-black font-mono ${result.total_score >= 50 ? "text-teal-600" : "text-red-500"}`}>
+                                {Number(result.total_score).toFixed(1)}
+                              </div>
+                              <Text size="xs" c="dimmed">/100</Text>
+                            </div>
+
+                            <Divider orientation="vertical" />
+
+                            {/* Grade */}
+                            <div className="text-center">
+                              <Text size="xs" c="dimmed" fw={500}>Grade</Text>
+                              <Badge
+                                size="xl"
+                                radius="md"
+                                color={gc}
+                                variant="filled"
+                                className="text-xl font-black px-3 py-1 mt-0.5"
+                              >
+                                {result.letter_grade}
+                              </Badge>
+                              <Text size="xs" c="dimmed" className="mt-0.5">{Number(result.grade_point).toFixed(2)} pts</Text>
+                            </div>
+
+                            {/* View detail */}
+                            <Tooltip label="View full details" withArrow>
+                              <ActionIcon
+                                variant="light"
+                                color="blue"
+                                size="lg"
+                                radius="md"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <IconEye size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          </div>
+                        </div>
+
+                        {/* Score progress bars */}
+                        <div className="mt-4 grid grid-cols-3 gap-2">
+                          {[
+                            { label: "Continuous Assessment", value: result.continuous_assessment, color: "blue" },
+                            { label: "Mid Exam", value: result.mid_exam, color: "violet" },
+                            { label: "Final Exam", value: result.final_exam, color: "indigo" },
+                          ].map((item) => (
+                            <div key={item.label}>
+                              <Group justify="space-between" mb={3}>
+                                <Text size="xs" c="dimmed">{item.label}</Text>
+                                <Text size="xs" fw={600}>{Number(item.value).toFixed(1)}</Text>
+                              </Group>
+                              <Progress value={Number(item.value)} color={item.color} size="xs" radius="xl" />
+                            </div>
+                          ))}
+                        </div>
+
+                        {result.feedback && (
+                          <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                            <strong>Instructor Remarks:</strong> {result.feedback}
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

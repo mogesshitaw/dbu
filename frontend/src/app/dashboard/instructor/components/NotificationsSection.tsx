@@ -105,7 +105,7 @@ const InstructorScheduleView: React.FC = () => {
     } catch (error) {
       console.error('Failed to fetch user session:', error);
     }
-  } ,[form]);
+  } ,[]);
   // Fetch current user session and instructors list
   useEffect(() => {
     fetchUserSession();

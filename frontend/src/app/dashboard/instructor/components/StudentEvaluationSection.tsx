@@ -114,7 +114,11 @@ interface StudentRow {
   evaluation_status: string;
 }
 
-export const StudentEvaluationSection: React.FC = () => {
+interface StudentEvaluationSectionProps {
+  isDeptHead?: boolean;
+}
+
+export const StudentEvaluationSection: React.FC<StudentEvaluationSectionProps> = ({ isDeptHead = false }) => {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -207,34 +211,42 @@ export const StudentEvaluationSection: React.FC = () => {
     return academicYears.find((ay) => String(ay.id) === selectedAcademicYearId) || null;
   }, [academicYears, selectedAcademicYearId]);
 
-  // 2. Fetch Assigned Courses for Instructor
+  // 2. Fetch Assigned Courses (for Instructor or Department Head)
   const fetchCourses = useCallback(async () => {
     setLoadingCourses(true);
     try {
-      const instructorId = currentUser?.id;
-      const res = await fetch(
-        `${API_URL}/api/evaluations/instructor/courses${instructorId ? `?instructor_id=${instructorId}` : ""}`,
-        { credentials: "include" }
-      );
+      const endpoint = isDeptHead
+        ? `${API_URL}/api/evaluations/department/courses${currentUser?.department_id ? `?department_id=${currentUser.department_id}` : ""}`
+        : `${API_URL}/api/evaluations/instructor/courses${currentUser?.id ? `?instructor_id=${currentUser.id}` : ""}`;
+
+      const res = await fetch(endpoint, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
-        const list: AssignedCourse[] = data.courses || [];
+        const rawList: AssignedCourse[] = data.courses || [];
+        // Deduplicate by composite key to prevent Mantine Select "duplicate options" error
+        const seen = new Set<string>();
+        const list = rawList.filter((c) => {
+          const key = `${c.course_id}_${c.section}_${c.department_id || ""}_${c.batch_id || ""}_${c.semester_id || ""}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
         setCourses(list);
         if (list.length > 0 && !selectedCourseKey) {
           // Select first course by default
           const first = list[0];
           setSelectedCourseKey(
-            `${first.course_id}_${first.section}_${first.department_id || ""}_${first.batch_id || ""}`
+            `${first.course_id}_${first.section}_${first.department_id || ""}_${first.batch_id || ""}_${first.semester_id || ""}`
           );
         }
       }
     } catch (err) {
-      console.error("Failed to fetch instructor courses:", err);
+      console.error("Failed to fetch courses:", err);
       setErrorMessage("Could not load assigned courses");
     } finally {
       setLoadingCourses(false);
     }
-  }, [API_URL, currentUser?.id, selectedCourseKey]);
+  }, [API_URL, currentUser?.id, currentUser?.department_id, isDeptHead, selectedCourseKey]);
 
   useEffect(() => {
     if (currentUser) {
@@ -308,11 +320,11 @@ export const StudentEvaluationSection: React.FC = () => {
   useEffect(() => {
     if (filteredCourses.length > 0) {
       const exists = filteredCourses.some(
-        (c) => `${c.course_id}_${c.section}_${c.department_id || ""}_${c.batch_id || ""}` === selectedCourseKey
+        (c) => `${c.course_id}_${c.section}_${c.department_id || ""}_${c.batch_id || ""}_${c.semester_id || ""}` === selectedCourseKey
       );
       if (!exists) {
         const first = filteredCourses[0];
-        setSelectedCourseKey(`${first.course_id}_${first.section}_${first.department_id || ""}_${first.batch_id || ""}`);
+        setSelectedCourseKey(`${first.course_id}_${first.section}_${first.department_id || ""}_${first.batch_id || ""}_${first.semester_id || ""}`);
       }
     } else if (courses.length > 0) {
       setSelectedCourseKey(null);
@@ -323,7 +335,7 @@ export const StudentEvaluationSection: React.FC = () => {
   const activeCourse = useMemo(() => {
     if (!selectedCourseKey) return null;
     return courses.find((c) => {
-      const key = `${c.course_id}_${c.section}_${c.department_id || ""}_${c.batch_id || ""}`;
+      const key = `${c.course_id}_${c.section}_${c.department_id || ""}_${c.batch_id || ""}_${c.semester_id || ""}`;
       return key === selectedCourseKey;
     });
   }, [courses, selectedCourseKey]);
@@ -824,10 +836,17 @@ export const StudentEvaluationSection: React.FC = () => {
                 placeholder="Select Academic Year"
                 value={selectedAcademicYearId}
                 onChange={(val) => setSelectedAcademicYearId(val)}
-                data={academicYears.map((ay) => ({
-                  value: String(ay.id),
-                  label: `${ay.academic_year} — ${ay.semester} (${ay.batch_year})${ay.status === "active" ? " ★ Active" : ""}`,
-                }))}
+                data={Array.from(
+                  new Map(
+                    academicYears.map((ay) => [
+                      String(ay.id),
+                      {
+                        value: String(ay.id),
+                        label: `${ay.academic_year} — ${ay.semester} (${ay.batch_year})${ay.status === "active" ? " ★ Active" : ""}`,
+                      },
+                    ])
+                  ).values()
+                )}
                 size="xs"
                 radius="md"
                 className="w-80"
@@ -957,10 +976,22 @@ export const StudentEvaluationSection: React.FC = () => {
                   clearable={false}
                   value={selectedCourseKey}
                   onChange={(val) => setSelectedCourseKey(val)}
-                  data={filteredCourses.map((c) => ({
-                    value: `${c.course_id}_${c.section}_${c.department_id || ""}_${c.batch_id || ""}`,
-                    label: `${c.course_code} - ${c.course_name} (Sec ${c.section}${c.batch_year ? ` • ${c.batch_year}` : ""})`,
-                  }))}
+                  data={Array.from(
+                    new Map(
+                      filteredCourses.map((c) => {
+                        const key = `${c.course_id}_${c.section}_${c.department_id || ""}_${c.batch_id || ""}_${c.semester_id || ""}`;
+                        const termInfo = [
+                          c.semester_name ? `${c.semester_name.toLowerCase().startsWith("semester") ? c.semester_name : `semester ${c.semester_name}`}` : "",
+                          c.batch_year || "",
+                        ].filter(Boolean).join(" - ");
+
+                        return [key, {
+                          value: key,
+                          label: `${c.course_code} - ${c.course_name} (Sec ${c.section}${termInfo ? ` • ${termInfo}` : ""})`,
+                        }];
+                      })
+                    ).values()
+                  )}
                   size="xs"
                   radius="md"
                   styles={{

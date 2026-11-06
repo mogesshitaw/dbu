@@ -836,7 +836,7 @@ const API_URL =process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
                   variant="subtle" 
                   className="mt-4"
                   onClick={() => {
-                    router.push('/dashboard/admin/academic-years');
+                    router.push('/dashboard/admin/semester');
                     closeSemesterModal();
                   }}
                 >
@@ -859,7 +859,7 @@ const API_URL =process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
               <Button
                 leftSection={<IconCalendar size={18} />}
                 onClick={() => {
-                  router.push('/dashboard/admin/academic-years');
+                  router.push('/dashboard/admin/semester');
                   closeSemesterModal();
                 }}
               >

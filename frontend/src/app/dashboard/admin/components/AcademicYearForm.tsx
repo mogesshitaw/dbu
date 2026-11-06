@@ -155,7 +155,7 @@ export default function AcademicYearForm({
       });
     }
     setHasReset(true);
-  }, [opened, academicYear, hasReset, form]);
+  }, [opened, academicYear, hasReset]);
 
   /* ===================== OPTIONS ===================== */
   const semesterOptions = useMemo(() => {

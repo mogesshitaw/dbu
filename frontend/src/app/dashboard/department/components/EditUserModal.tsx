@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   Modal,
   TextInput,
@@ -31,6 +31,11 @@ interface EditUserModalProps {
   error?: string | null;
 }
 
+const ROLE_OPTIONS = [
+  { value: "admin", label: "Admin" },
+  { value: "instructor", label: "Instructor" },
+];
+
 const EditUserModal: React.FC<EditUserModalProps> = ({
   opened,
   onClose,
@@ -46,7 +51,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({
       name: "",
       email: "",
       role: "instructor" as User["role"],
-      department: null as number | null,
+      department: null as string | null,
       idNumber: "",
     },
     validate: {
@@ -55,6 +60,15 @@ const EditUserModal: React.FC<EditUserModalProps> = ({
       idNumber: (value) => (value.trim().length < 1 ? 'ID Number is required' : null),
     },
   });
+
+  const departmentOptions = useMemo(
+    () =>
+      (departments || []).map((dept) => ({
+        value: dept.department_id.toString(),
+        label: dept.department_name,
+      })),
+    [departments]
+  );
 
   // Check for duplicate users
   const isDuplicateUser = (
@@ -65,11 +79,11 @@ const EditUserModal: React.FC<EditUserModalProps> = ({
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedIdNumber = idNumber.trim();
 
-    return users.some((user) => {
-      if (user.id === excludeId) return false;
+    return users.some((u) => {
+      if (u.id === excludeId) return false;
       return (
-        user.email.toLowerCase() === trimmedEmail ||
-        user.idNumber === trimmedIdNumber
+        u.email.toLowerCase() === trimmedEmail ||
+        u.idNumber === trimmedIdNumber
       );
     });
   };
@@ -85,27 +99,27 @@ const EditUserModal: React.FC<EditUserModalProps> = ({
 
     const duplicateFields: string[] = [];
 
-    users.forEach((user) => {
-      if (user.id === excludeId) return;
-      if (user.email.toLowerCase() === trimmedEmail) duplicateFields.push('email');
-      if (user.idNumber === trimmedIdNumber) duplicateFields.push('ID number');
+    users.forEach((u) => {
+      if (u.id === excludeId) return;
+      if (u.email.toLowerCase() === trimmedEmail) duplicateFields.push('email');
+      if (u.idNumber === trimmedIdNumber) duplicateFields.push('ID number');
     });
 
     return [...new Set(duplicateFields)];
   };
 
-  // Reset form when user changes
+  // Reset form when user changes or modal opens
   useEffect(() => {
-    if (user) {
+    if (user && opened) {
       editUserForm.setValues({
-        name: user.name,
-        email: user.email,
+        name: user.name || "",
+        email: user.email || "",
         role: user.role,
-        department: user.department_id,
-        idNumber: user.idNumber,
+        department: user.department_id ? String(user.department_id) : null,
+        idNumber: user.idNumber || "",
       });
     }
-  }, [editUserForm, user]);
+  }, [user, opened]);
 
   const handleSave = async (values: typeof editUserForm.values) => {
     if (!user) return;
@@ -126,11 +140,11 @@ const EditUserModal: React.FC<EditUserModalProps> = ({
       userData: {
         name: values.name.trim(),
         email: values.email.trim(),
-        department: values.department,
+        department: values.role === "admin" ? null : (values.department ? Number(values.department) : null),
         role: values.role,
         idNumber: values.idNumber.trim(),
-        username: values.idNumber.trim() // Use idNumber as username
-      }
+        username: values.idNumber.trim(), // Use idNumber as username
+      },
     });
   };
 
@@ -160,10 +174,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({
           <Group grow mb="md">
             <Select
               label="Role"
-              data={[
-                { value: "admin", label: "Admin" },
-                { value: "instructor", label: "Instructor" },
-              ]}
+              data={ROLE_OPTIONS}
               {...editUserForm.getInputProps('role')}
               required
             />
@@ -171,10 +182,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({
             {editUserForm.values.role !== "admin" && (
               <Select
                 label="Department"
-                data={departments.map(dept => ({
-                  value: dept.department_id.toString(),
-                  label: dept.department_name
-                }))}
+                data={departmentOptions}
                 {...editUserForm.getInputProps('department')}
                 required
                 clearable

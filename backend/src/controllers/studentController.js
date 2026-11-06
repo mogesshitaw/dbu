@@ -998,20 +998,6 @@ const deleteStudent = async (req, res) => {
       });
     }
 
-    // Check if student has any related records (attendance, grades, etc.)
-    const hasAttendance = await client.query(
-      "SELECT COUNT(*) FROM student_attendance WHERE student_id = $1",
-      [id]
-    );
-
-    if (parseInt(hasAttendance.rows[0].count) > 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ 
-        success: false, 
-        error: "Cannot delete student with attendance records. Update status to 'Inactive' instead." 
-      });
-    }
-
     // Delete profile image if exists
     const profileImage = student.rows[0].profile_image_url;
     if (profileImage) {

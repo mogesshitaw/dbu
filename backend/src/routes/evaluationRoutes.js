@@ -10,6 +10,7 @@ const {
   exportEvaluations,
   getDepartmentEvaluationSections,
   updateDepartmentEvaluationStatus,
+  getDeptHeadCourses,
 } = require("../controllers/evaluationController");
 
 // Authentication middleware wrapper (supports both session and user query for flexibility)
@@ -48,5 +49,11 @@ router.get("/department/sections", getDepartmentEvaluationSections);
 
 // 9. Department Head: Approve, lock, or unlock (revert to draft) course section evaluations
 router.put("/department/status", updateDepartmentEvaluationStatus);
+
+// 10. Department Head: Get all assigned courses/sections within the department for evaluation
+router.get("/department/courses", getDeptHeadCourses);
+
+// 11. Department Head: Save/submit evaluations directly
+router.post("/department/save", saveEvaluations);
 
 module.exports = router;
